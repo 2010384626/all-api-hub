@@ -4,6 +4,8 @@ import ts from "typescript"
 import { describe, expect, it } from "vitest"
 
 import {
+  DEFAULT_LANG,
+  ENGLISH_LANG,
   SUPPORTED_UI_LANGUAGES,
   type SupportedUiLanguage,
 } from "~/constants/i18n"
@@ -25,6 +27,17 @@ const ALL_CARDINAL_SUFFIXES = [
 ].sort()
 
 type LocaleMap = Record<string, Set<string>>
+
+// The fingerprint page is offered only by the Web host, whose language picker
+// exposes Chinese and English. Every other namespace retains extension parity.
+const NAMESPACE_LANGUAGES: Record<string, readonly SupportedUiLanguage[]> = {
+  modelFingerprint: [DEFAULT_LANG, ENGLISH_LANG],
+}
+
+/** Return the languages in which this namespace is exposed to users. */
+function getNamespaceLanguages(namespace: string) {
+  return NAMESPACE_LANGUAGES[namespace] ?? SUPPORTED_UI_LANGUAGES
+}
 
 /**
  * Flattens nested locale objects into dotted translation keys.
@@ -204,8 +217,8 @@ function objectLiteralHasProperty(
 function hasCountOption(node: ts.Expression | undefined) {
   return Boolean(
     node &&
-      ts.isObjectLiteralExpression(node) &&
-      objectLiteralHasProperty(node, "count"),
+    ts.isObjectLiteralExpression(node) &&
+    objectLiteralHasProperty(node, "count"),
   )
 }
 
@@ -386,13 +399,20 @@ describe("i18n locale validation", () => {
     const baseLocaleMap = await readLocaleMap(baseLanguage)
     const baseNamespaces = Object.keys(baseLocaleMap).sort()
 
+    for (const namespace of Object.keys(NAMESPACE_LANGUAGES)) {
+      expect(baseNamespaces, `${namespace} base namespace`).toContain(namespace)
+    }
+
     for (const language of otherLanguages) {
       const localeMap = await readLocaleMap(language)
       const namespaces = Object.keys(localeMap).sort()
 
-      expect(namespaces, `${language} namespaces`).toEqual(baseNamespaces)
+      const expectedNamespaces = baseNamespaces.filter((namespace) =>
+        getNamespaceLanguages(namespace).includes(language),
+      )
+      expect(namespaces, `${language} namespaces`).toEqual(expectedNamespaces)
 
-      for (const namespace of baseNamespaces) {
+      for (const namespace of expectedNamespaces) {
         expect(
           normalizeLocaleKeySet(atIndex(localeMap, namespace)),
           `${language}:${namespace} keys`,
@@ -472,7 +492,7 @@ describe("i18n locale validation", () => {
         const localeKey = atIndex(match, 2)
 
         if (options?.usesPlural) {
-          for (const language of SUPPORTED_UI_LANGUAGES) {
+          for (const language of getNamespaceLanguages(namespace)) {
             const localeKeys = localeMapsByLanguage[language][namespace]
             const pluralCategories = PLURAL_CATEGORIES_BY_LANGUAGE[language]
 
@@ -507,7 +527,7 @@ describe("i18n locale validation", () => {
           return
         }
 
-        for (const language of SUPPORTED_UI_LANGUAGES) {
+        for (const language of getNamespaceLanguages(namespace)) {
           const localeKeys = localeMapsByLanguage[language][namespace]
           if (!localeKeys?.has(localeKey)) {
             missingKeys.push(

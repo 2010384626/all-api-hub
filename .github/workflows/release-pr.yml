@@ -13,6 +13,8 @@ permissions:
 
 jobs:
   release:
+    # VPS forks deploy their Web service; extension releases require separate setup.
+    if: github.repository == 'qixing-jk/all-api-hub' || vars.ENABLE_EXTENSION_RELEASES == 'true'
     runs-on: ubuntu-latest
     steps:
       # Checkout 当前仓库代码

@@ -60,6 +60,8 @@ bash deploy/start.sh
 
 上游 qixing-jk 的变更应先合入你自己的 fork、验证 Web 适配后再发布。VPS 不直接跟随原作者的 main，以免覆盖正在使用的 Web 改造。
 
+原作者的扩展自动发版流程默认只在原仓库运行；本 fork 使用 Web service 构建验证。若以后需要发行浏览器扩展，另行配置对应密钥并将仓库变量 `ENABLE_EXTENSION_RELEASES` 设为 `true`。
+
 ## 新部署与网站挂载
 
 需要 Linux、Git、Bash、OpenSSL、Docker Engine 与 Docker Compose 插件。无需主机 Node/npm；镜像构建需要连接 npm 和 Docker 镜像仓库。原版 UI 构建依赖较多，建议至少 2 GB 可用内存，资源紧张时在另一台机器构建镜像。

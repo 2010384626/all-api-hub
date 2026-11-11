@@ -47,6 +47,7 @@ permissions:
 
 jobs:
   precheck:
+    if: github.repository == 'qixing-jk/all-api-hub' || vars.ENABLE_EXTENSION_RELEASES == 'true'
     # The daily schedule exists so a failed nightly gets retried, but most scheduled
     # runs found main unchanged since a push had already published it: 5 of 27 measured
     # runs rebuilt the exact commit the tag already pointed at.
