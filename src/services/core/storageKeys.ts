@@ -24,6 +24,7 @@ export const INTERNAL_TAB_BROWSER_SESSION_STORAGE_KEY =
 export const INTERNAL_TAB_STORAGE_KEY_PREFIX = "internalBrowsingTab:"
 
 export const STORAGE_LOCKS = {
+  WEB_CATALOG_SNAPSHOTS: "all-api-hub:web-catalog-snapshots",
   /** Serializes explicit data cleanup operations in development builds. */
   DEV_DATA_CLEANUP: "all-api-hub:dev-data-cleanup",
   LOGIN_PROVIDER_EVIDENCE: "all-api-hub:login-provider-evidence",

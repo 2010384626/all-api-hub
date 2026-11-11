@@ -2,6 +2,7 @@ import { resolveDeploymentApiOrigin } from "~/constants/deploymentApiOrigins"
 import type { AccountSiteType } from "~/constants/siteType"
 import { getAccountSiteProductProfile } from "~/services/accounts/accountSiteProfile"
 import { withAccountAuthSession } from "~/services/accounts/accountSiteProfile/authSession"
+import { isRedactedCredential } from "~/services/accounts/identity/credentialPlaceholder"
 import {
   ACCOUNT_RUNTIME_KEY_STATUSES,
   buildAccountKeyResourceRuntimeKeyFromFacts,
@@ -40,6 +41,7 @@ import {
   createDeferredAbortDeadline,
   runAbortableTask,
 } from "~/services/apiTransport/abortableTask"
+import { API_ERROR_CODES, ApiError } from "~/services/apiTransport/errors"
 import { bindApiTransportRequest } from "~/services/apiTransport/recovery"
 import type { RequestScheduling } from "~/services/apiTransport/requestScheduling"
 import { isSafariNativeCookieEnabled } from "~/services/apiTransport/safariNativeCookie"
@@ -47,7 +49,15 @@ import { API_DIRECT_REQUEST_REASONS } from "~/services/apiTransport/type"
 import type { ApiServiceRequest } from "~/services/apiTransport/type"
 import { normalizeInviteLinkError } from "~/services/inviteLinks/errors"
 import type { ProtectionBypassExecution } from "~/services/protectionBypass/contracts"
+import { persistWebKeySession } from "~/services/webCatalogs/keySession"
+import {
+  accountCatalogContext,
+  readWebCatalogSnapshot,
+  requestWebCatalogRefresh,
+} from "~/services/webCatalogs/snapshots"
 import { AuthTypeEnum, type DisplaySiteData, type SiteAccount } from "~/types"
+import { isWebService } from "~/utils/browser/webService"
+import { t } from "~/utils/i18n/core"
 
 const hasNonEmptyString = (value: unknown): value is string =>
   typeof value === "string" && value.trim().length > 0
@@ -156,6 +166,21 @@ const createAccountApiContextFromSource = (
   const accessToken =
     typeof source.accessToken === "string" ? source.accessToken : ""
   const cookie = typeof source.cookie === "string" ? source.cookie : undefined
+  const usesCookie = source.authType === AuthTypeEnum.Cookie
+  const activeCredential =
+    usesCookie && hasNonEmptyString(cookie) ? cookie : accessToken
+  if (
+    isWebService() &&
+    source.authType !== AuthTypeEnum.None &&
+    isRedactedCredential(activeCredential)
+  ) {
+    throw new ApiError(
+      t("catalogPersistence:credentialRedacted"),
+      401,
+      undefined,
+      API_ERROR_CODES.HTTP_401,
+    )
+  }
 
   if (
     source.authType === AuthTypeEnum.None ||
@@ -205,7 +230,11 @@ const createAccountApiContextFromSource = (
     auth: {
       authType: source.authType,
       userId: source.userId,
-      accessToken,
+      // Cookie imports may retain a redacted, unused token. Never send it as Bearer auth.
+      accessToken:
+        isWebService() && usesCookie && isRedactedCredential(accessToken)
+          ? ""
+          : accessToken,
       cookie,
     },
   }
@@ -381,8 +410,10 @@ const usesAssociatedProfileByDefault = (
  */
 export async function fetchDisplayAccountRuntimeKeys(
   account: DisplayAccountApiSnapshot,
-  options: { signal?: AbortSignal } = {},
+  options: { signal?: AbortSignal; forceRefresh?: boolean } = {},
 ): Promise<AccountRuntimeKey[]> {
+  if (options.forceRefresh)
+    await requestWebCatalogRefresh("keys", `account:${account.id}`)
   const { capabilities, serviceCredential, request } =
     createDisplayAccountApiContext(account)
   const runtimeKeyAccount = buildAccountRuntimeKeyAccount(account)
@@ -399,9 +430,10 @@ export async function fetchDisplayAccountRuntimeKeys(
   })
   if (resources) {
     try {
-      const session = await resources.open(
-        { account: runtimeKeyAccount, request },
-        options,
+      const session = persistWebKeySession(
+        await resources.open({ account: runtimeKeyAccount, request }, options),
+        `account:${account.id}`,
+        accountCatalogContext(account),
       )
       const scope = await session.resolveDefaultScope(options)
       const collection = await session.openCollection(scope.scopeKey, options)
@@ -447,10 +479,17 @@ export async function fetchDisplayAccountServiceRuntimeKeys(
 ): Promise<AccountRuntimeKey[]> {
   const { serviceCredential, request } = createDisplayAccountApiContext(account)
   if (!serviceCredential) return []
-  const credential = await serviceCredential.fetch({
-    ...request,
-    ...(options.signal ? { abortSignal: options.signal } : {}),
-  })
+  const credential = await readWebCatalogSnapshot(
+    "keys",
+    `account:${account.id}`,
+    "service-credential",
+    accountCatalogContext(account),
+    () =>
+      serviceCredential.fetch({
+        ...request,
+        ...(options.signal ? { abortSignal: options.signal } : {}),
+      }),
+  )
   return credential.key.trim()
     ? [
         buildServiceCredentialRuntimeKey(

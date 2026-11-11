@@ -32,6 +32,7 @@ type LocaleMap = Record<string, Set<string>>
 // exposes Chinese and English. Every other namespace retains extension parity.
 const NAMESPACE_LANGUAGES: Record<string, readonly SupportedUiLanguage[]> = {
   modelFingerprint: [DEFAULT_LANG, ENGLISH_LANG],
+  catalogPersistence: [DEFAULT_LANG, ENGLISH_LANG],
 }
 
 /** Return the languages in which this namespace is exposed to users. */

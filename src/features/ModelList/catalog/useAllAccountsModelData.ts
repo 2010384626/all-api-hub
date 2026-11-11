@@ -43,6 +43,7 @@ import {
   PRODUCT_ANALYTICS_RESULTS,
   PRODUCT_ANALYTICS_SOURCE_KINDS,
 } from "~/services/productAnalytics/contracts"
+import { requestWebCatalogRefresh } from "~/services/webCatalogs/snapshots"
 import type { DisplaySiteData } from "~/types"
 
 /**
@@ -82,8 +83,8 @@ export function useAllAccountsModelData(
       staleTime:
         target.readiness.route ===
         MODEL_LIST_ACCOUNT_SOURCE_ROUTES.ProviderCatalog
-          ? target.readiness.providerModelCatalog.personalized?.cacheTtlMs ??
-            target.readiness.providerModelCatalog.source.cacheTtlMs
+          ? (target.readiness.providerModelCatalog.personalized?.cacheTtlMs ??
+            target.readiness.providerModelCatalog.source.cacheTtlMs)
           : MODEL_PRICING_CACHE_TTL_MS,
       refetchOnWindowFocus: false,
       retry: shouldRetryModelPricingQuery,
@@ -224,6 +225,7 @@ export function useAllAccountsModelData(
   })
 
   const loadPricingData = useCallback(async () => {
+    await requestWebCatalogRefresh("models")
     // Invalidate shared provider snapshots once, before any account starts a
     // replacement fetch, so one refresh preserves cross-account coalescing.
     const invalidated = new Set<() => void>()

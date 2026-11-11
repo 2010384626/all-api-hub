@@ -103,6 +103,11 @@ parentPort.on("message", async (message) => {
       value = runtime.locks.releaseClient(message.sessionId)
     else if (message.type === "importBackup")
       value = await background.importBackup(message.payload)
+    else if (message.type === "resolveDetectionCredential")
+      value = await background.resolveDetectionCredential(
+        message.sourceId,
+        message.keyId,
+      )
     else if (message.type === "close") {
       clearInterval(leases)
       await runtime.close()

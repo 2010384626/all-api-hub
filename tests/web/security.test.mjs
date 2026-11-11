@@ -121,6 +121,73 @@ test("address policy denies private, encoded IPv4, mapped IPv4 and non-global IP
   )
 })
 
+test("safe streaming closes its dispatcher when consumed, cancelled or bounded by response size", async () => {
+  for (const mode of ["consume", "cancel", "limit", "abort"]) {
+    let closed = 0,
+      cancelled = 0,
+      networkSignal
+    const controller = new AbortController()
+    class Agent {
+      async close() {
+        closed++
+      }
+    }
+    const safeFetch = network.createSafeFetch({
+      streaming: true,
+      lookupImpl: async () => [{ address: "1.1.1.1", family: 4 }],
+      AgentImpl: Agent,
+      fetchImpl: async (_url, init) => {
+        networkSignal = init.signal
+        let sent = false
+        return new Response(
+          new ReadableStream({
+            start(stream) {
+              init.signal.addEventListener(
+                "abort",
+                () => stream.error(new Error("aborted")),
+                { once: true },
+              )
+            },
+            pull(stream) {
+              if (!sent) {
+                sent = true
+                stream.enqueue(
+                  new Uint8Array(
+                    mode === "limit" ? 4 * 1024 * 1024 + 1 : [1, 2, 3],
+                  ),
+                )
+              } else if (mode === "consume") stream.close()
+            },
+            cancel() {
+              cancelled++
+            },
+          }),
+        )
+      },
+    })
+    const response = await safeFetch("https://api.example.com", {
+      signal: controller.signal,
+    })
+    if (mode === "consume")
+      assert.deepEqual(
+        [...new Uint8Array(await response.arrayBuffer())],
+        [1, 2, 3],
+      )
+    if (mode === "cancel") await response.body.cancel()
+    if (mode === "limit") await assert.rejects(response.arrayBuffer(), /4 MB/)
+    if (mode === "abort") {
+      const reader = response.body.getReader()
+      await reader.read()
+      controller.abort()
+      await assert.rejects(reader.read(), /aborted/)
+      assert.equal(networkSignal.aborted, true)
+      reader.releaseLock()
+    }
+    assert.equal(closed, 1, mode)
+    if (["cancel", "limit"].includes(mode)) assert.equal(cancelled, 1, mode)
+  }
+})
+
 test("network resolves once, pins checked address, rejects redirects and mixed DNS results offline", async () => {
   assert.equal(
     typeof network.createSafeFetch,

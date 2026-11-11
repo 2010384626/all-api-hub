@@ -1,0 +1,12 @@
+{
+  "credentialRedacted": "The imported credential is a redaction placeholder. Export a backup containing real credentials, or edit the account and enter a valid Token / Cookie.",
+  "description": "Lists are saved on the server after the first successful load and reused until you refresh. A failed refresh keeps the last saved result. Scheduled refresh covers all saved accounts and credentials.",
+  "enabled": "Scheduled refresh",
+  "interval": "Interval (minutes)",
+  "lastAttempt_one": "Last scheduled refresh: {{time}} · {{count}} source failed",
+  "lastAttempt_other": "Last scheduled refresh: {{time}} · {{count}} sources failed",
+  "loadFailed": "Could not load the schedule.",
+  "save": "Save schedule",
+  "saveFailed": "Could not save. Enter an interval between 5 and 43,200 minutes.",
+  "title": "Saved lists and scheduled refresh"
+}

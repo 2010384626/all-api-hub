@@ -34,6 +34,11 @@ import {
   PROTECTION_BYPASS_USER_COMMANDS,
   type ProtectionBypassExecution,
 } from "~/services/protectionBypass/contracts"
+import {
+  accountCatalogContext,
+  readWebCatalogSnapshot,
+  requestWebCatalogRefresh,
+} from "~/services/webCatalogs/snapshots"
 import type { DisplaySiteData } from "~/types"
 import { getErrorMessage } from "~/utils/core/error"
 import { normalizeUrlForOriginKey } from "~/utils/core/urlParsing"
@@ -110,15 +115,22 @@ export function useServiceCredentialLifecycle(
                 createDisplayAccountApiContext(account)
               if (!serviceCredential)
                 throw new Error(t("keyManagement:messages.loadFailed"))
-              const credential = await serviceCredential.fetch(
-                bindApiTransportRequest(
-                  {
-                    ...request,
-                    abortSignal: boundary.controller.signal,
-                    protectionBypassExecution: execution,
-                  },
-                  API_DIRECT_REQUEST_REASONS.CallerManaged,
-                ),
+              const credential = await readWebCatalogSnapshot(
+                "keys",
+                `account:${account.id}`,
+                "service-credential",
+                accountCatalogContext(account),
+                () =>
+                  serviceCredential.fetch(
+                    bindApiTransportRequest(
+                      {
+                        ...request,
+                        abortSignal: boundary.controller.signal,
+                        protectionBypassExecution: execution,
+                      },
+                      API_DIRECT_REQUEST_REASONS.CallerManaged,
+                    ),
+                  ),
               )
               if (!current()) return null
               update({
@@ -197,6 +209,9 @@ export function useServiceCredentialLifecycle(
       execution?: ProtectionBypassExecution,
     ) => {
       if (!ids.length) return
+      await Promise.all(
+        ids.map((id) => requestWebCatalogRefresh("keys", `account:${id}`)),
+      )
       const tracker = startProductAnalyticsAction({
         featureId: PRODUCT_ANALYTICS_FEATURE_IDS.KeyManagement,
         actionId: PRODUCT_ANALYTICS_ACTION_IDS.RefreshAccountTokens,
@@ -356,6 +371,7 @@ export function useServiceCredentialLifecycle(
       )
       const credential = await rotation
       if (!current() || !credential) return
+      await requestWebCatalogRefresh("keys", `account:${account.id}`)
       update({
         ...statesRef.current,
         [account.id]: {

@@ -17,10 +17,11 @@ import {
   refreshAccount,
   validateAccount,
 } from "./accounts.mjs"
+import { createDetectionJobs } from "./detection-jobs.mjs"
 import { CLIENT_PRESETS, runDetection } from "./detector.mjs"
 import { AppError, requireValue } from "./errors.mjs"
 import { legacyAccountsToBackup } from "./legacy-migration.mjs"
-import { safeFetch } from "./network.mjs"
+import { safeFetch, safeFetchStream } from "./network.mjs"
 import { Store } from "./store.mjs"
 
 const publicDirectory = fileURLToPath(new URL("../public/", import.meta.url))
@@ -53,6 +54,7 @@ export async function readJson(req, limit = 1024 * 1024) {
 export async function createApp({
   env = process.env,
   fetchImpl = safeFetch,
+  detectionFetchImpl,
   detect = runDetection,
   runtimeFactory,
   nativeDirectory = fileURLToPath(new URL("../dist/", import.meta.url)),
@@ -88,6 +90,18 @@ export async function createApp({
   const nativeRuntime = runtimeFactory
     ? await runtimeFactory({ store, fetchImpl })
     : null
+  const detectionJobs = await createDetectionJobs({
+    store,
+    detect: (input, options) =>
+      detect(input, {
+        ...options,
+        fetchImpl:
+          detectionFetchImpl ||
+          (fetchImpl === safeFetch ? safeFetchStream : fetchImpl),
+      }),
+    resolveCredential: (input) =>
+      nativeRuntime?.resolveDetectionCredential(input),
+  })
   const salt = randomBytes(16)
   const passwordHash = scryptSync(env.ADMIN_PASSWORD, salt, 32)
   const sessions = new Map(),
@@ -445,7 +459,7 @@ export async function createApp({
           /* Version metadata is optional in development fixtures. */
         }
         json(res, 200, {
-          version: "0.2.0",
+          version: "0.3.0",
           nativeWorkspace: Boolean(nativeRuntime),
           upstream,
           updateCommand: "bash deploy/update.sh",
@@ -605,6 +619,60 @@ export async function createApp({
         json(res, 200, { presets: CLIENT_PRESETS })
         return
       }
+      if (route === "api/detection/config" && method === "GET") {
+        json(res, 200, { config: await detectionJobs.getConfig() })
+        return
+      }
+      if (route === "api/detection/config" && method === "PATCH") {
+        json(res, 200, {
+          config: await detectionJobs.saveConfig(await readJson(req)),
+        })
+        return
+      }
+      if (route === "api/detection/history" && method === "GET") {
+        const params = new URL(req.url, origin).searchParams
+        json(
+          res,
+          200,
+          await detectionJobs.history({
+            offset: params.get("offset") || 0,
+            limit: params.get("limit") || 20,
+            sourceId: params.get("sourceId"),
+            model: params.get("model"),
+          }),
+        )
+        return
+      }
+      const verify = route.match(/^api\/detection\/history\/([\w-]+)\/verify$/)
+      if (verify && method === "POST") {
+        json(res, 200, await detectionJobs.verifyHistory(verify[1]))
+        return
+      }
+      if (route === "api/detection/schedules" && method === "GET") {
+        json(res, 200, { schedules: await detectionJobs.listSchedules() })
+        return
+      }
+      if (route === "api/detection/schedules" && method === "POST") {
+        json(res, 201, {
+          schedule: await detectionJobs.saveSchedule(await readJson(req)),
+        })
+        return
+      }
+      const schedule = route.match(/^api\/detection\/schedules\/([\w-]+)$/)
+      if (schedule && method === "PATCH") {
+        json(res, 200, {
+          schedule: await detectionJobs.saveSchedule(
+            await readJson(req),
+            schedule[1],
+          ),
+        })
+        return
+      }
+      if (schedule && method === "DELETE") {
+        await detectionJobs.deleteSchedule(schedule[1])
+        json(res, 200, { ok: true })
+        return
+      }
       if (route === "api/detect" && method === "POST") {
         requireValue(!detectionBusy, "已有检测正在执行，请等待完成", 409)
         detectionBusy = true
@@ -622,17 +690,45 @@ export async function createApp({
           res.on("close", () => {
             if (!res.writableEnded) controller.abort()
           })
-          json(
-            res,
-            200,
-            await detect(input, {
-              fetchImpl,
-              signal: AbortSignal.any([
-                controller.signal,
-                AbortSignal.timeout(180_000),
-              ]),
-            }),
-          )
+          const signal = AbortSignal.any([
+            controller.signal,
+            AbortSignal.timeout(600_000),
+          ])
+          if (req.headers.accept?.includes("text/event-stream")) {
+            res.writeHead(200, {
+              "content-type": "text/event-stream; charset=utf-8",
+              "x-accel-buffering": "no",
+            })
+            res.flushHeaders()
+            const send = (event, data) => {
+              if (!res.destroyed)
+                res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
+            }
+            const heartbeat = setInterval(() => {
+              if (!res.destroyed) res.write(": heartbeat\n\n")
+            }, 15000)
+            try {
+              send(
+                "result",
+                await detectionJobs.run(input, {
+                  signal,
+                  onProgress: (data) => send("progress", data),
+                }),
+              )
+            } catch (error) {
+              send("error", {
+                error:
+                  error instanceof AppError ||
+                  error.name === "DetectionInputError"
+                    ? error.message
+                    : "检测失败",
+                historyId: error.historyId,
+              })
+            } finally {
+              clearInterval(heartbeat)
+              res.end()
+            }
+          } else json(res, 200, await detectionJobs.run(input, { signal }))
         } finally {
           detectionBusy = false
         }
@@ -658,11 +754,15 @@ export async function createApp({
   return {
     handler,
     store,
-    tick: nativeRuntime ? async () => {} : tick,
+    tick: async () => {
+      await detectionJobs.tick()
+      if (!nativeRuntime) await tick()
+    },
     base,
     origin,
     runtime: nativeRuntime,
     close: async () => {
+      await detectionJobs.close()
       await nativeRuntime?.close()
     },
   }

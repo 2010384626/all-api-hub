@@ -48,6 +48,7 @@ import {
   PRODUCT_ANALYTICS_SURFACE_IDS,
   type ProductAnalyticsSiteType,
 } from "~/services/productAnalytics/contracts"
+import { requestWebCatalogRefresh } from "~/services/webCatalogs/snapshots"
 import type { DisplaySiteData } from "~/types"
 
 export type { AccountKeyResourceRouteTransition } from "~/features/KeyManagement/resources/workflows/accountKeyResourceControllerTypes"
@@ -294,6 +295,12 @@ export function useAccountKeyResourceController({
       routeTransitionId?: string,
       retryAccountIds?: readonly string[],
     ) => {
+      await requestWebCatalogRefresh(
+        "keys",
+        mode === controllerModes.Single
+          ? `account:${selectedAccount}`
+          : undefined,
+      )
       const account = accountsRef.current.find(
         (candidate) => candidate.id === selectedAccount,
       )

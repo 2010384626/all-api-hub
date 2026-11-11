@@ -41,6 +41,7 @@ import { useModelListVerificationResults } from "~/features/ModelList/verificati
 import { useModelListVerificationWorkflow } from "~/features/ModelList/verification/useModelListVerificationWorkflow"
 import { VerifyApiDialog } from "~/features/Verification/api"
 import { VerifyCliSupportDialog } from "~/features/Verification/cli"
+import { WebCatalogSchedule } from "~/features/WebCatalogSchedule"
 import { MODEL_VENDOR_FILTER_VALUES } from "~/services/models/modelVendor"
 import {
   PRODUCT_ANALYTICS_ACTION_IDS,
@@ -367,6 +368,7 @@ export default function ModelList(props: {
           ) : undefined
         }
       />
+      <WebCatalogSchedule kind="models" />
       <AccountSelector
         selectedSourceValue={selectedSourceValue}
         setSelectedSourceValue={handleSelectedSourceValueChange}

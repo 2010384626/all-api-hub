@@ -159,6 +159,15 @@ export function normalizeDetectionInput(input) {
     throw new DetectionInputError("超时必须在 5 到 120 秒之间。")
   if (input.stream !== undefined && typeof input.stream !== "boolean")
     throw new DetectionInputError("stream 必须是布尔值。")
+  for (const field of ["parallel", "looseMode", "autoVerify"]) {
+    if (input[field] !== undefined && typeof input[field] !== "boolean")
+      throw new DetectionInputError(`${field} 必须是布尔值。`)
+  }
+  if (
+    input.serviceTier !== undefined &&
+    !["default", "flex", "fast", "ultrafast"].includes(input.serviceTier)
+  )
+    throw new DetectionInputError("服务等级无效。")
   const customHeaders = validateFingerprintHeaders(input.headers)
   const userAgent = requireText(
     input.userAgent || customHeaders["user-agent"] || preset.userAgent,
@@ -176,10 +185,17 @@ export function normalizeDetectionInput(input) {
     count,
     timeoutSeconds,
     stream: input.stream ?? false,
+    parallel: input.parallel ?? true,
+    looseMode: input.looseMode ?? true,
+    autoVerify: input.autoVerify ?? true,
+    serviceTier: input.serviceTier ?? "default",
     effort: requireText(input.effort, "推理强度", 32, true),
     headers: { ...preset.headers, ...customHeaders, "user-agent": userAgent },
   }
-  const request = buildRequest(result, "validate")
+  const request = buildRequest(
+    { ...result, parallel: result.parallel ? 3 : 1 },
+    "validate",
+  )
   if ("error" in request) throw new DetectionInputError(request.error)
   return result
 }
@@ -289,7 +305,7 @@ function parseJsonReply(data, api) {
   }
 }
 
-function parseSseReply(raw, api) {
+function createSseParser(api) {
   let text = "",
     finish = "",
     terminal = false,
@@ -297,16 +313,16 @@ function parseSseReply(raw, api) {
   const metadata = (data) => {
     if (typeof data?.model === "string") responseModel = data.model
   }
-  for (const frame of raw.split(/\r\n\r\n|\n\n|\r\r/)) {
+  const accept = (frame) => {
     const payload = frame
       .split(/\r\n|\r|\n/)
       .filter((line) => line.startsWith("data:"))
       .map((line) => line.slice(5).trimStart())
       .join("\n")
-    if (!payload) continue
+    if (!payload) return
     if (payload.trim() === "[DONE]") {
       terminal = true
-      continue
+      return
     }
     let data
     try {
@@ -372,12 +388,82 @@ function parseSseReply(raw, api) {
         throw new Error("检测响应未正常完成，不能评分。")
     }
   }
-  if (!terminal || !["stop", "end_turn", "completed"].includes(finish))
-    throw new Error("SSE 检测响应未正常完成，不能评分。")
-  return { text, responseModel }
+  return { accept, snapshot: () => ({ text, responseModel, terminal, finish }) }
 }
 
-async function sampleChallenge(config, challenge, fetchImpl, outerSignal) {
+async function readStreamingReply(response, signal, config, challenge, update) {
+  if (!response.body) throw new Error("检测接口返回空响应。")
+  const reader = response.body.getReader(),
+    decoder = new TextDecoder(),
+    parser = createSseParser(config.api)
+  let pending = "",
+    bytes = 0,
+    truncated = false
+  const abort = () => {
+    void reader.cancel().catch(() => {})
+  }
+  signal.addEventListener("abort", abort, { once: true })
+  const report = (final) => {
+    const state = parser.snapshot()
+    const numbers = parseNumbers(
+      final ? state.text : state.text.replace(/\d+$/, ""),
+    )
+    const used = config.looseMode
+      ? numbers.slice(0, challenge.expected_count)
+      : numbers
+    update(used.join(", "), used.length, state.responseModel)
+    if (
+      !final &&
+      config.looseMode &&
+      numbers.length >= challenge.expected_count
+    )
+      truncated = true
+  }
+  try {
+    while (!truncated) {
+      signal.throwIfAborted()
+      const { done, value } = await reader.read()
+      signal.throwIfAborted()
+      if (done) {
+        pending += decoder.decode()
+        break
+      }
+      bytes += value.byteLength
+      if (bytes > MAX_RESPONSE_BYTES)
+        throw new Error("检测响应超过 1 MB 限制。")
+      pending += decoder.decode(value, { stream: true })
+      const frames = pending.split(/\r\n\r\n|\n\n|\r\r/)
+      pending = frames.pop()
+      for (const frame of frames) {
+        parser.accept(frame)
+        report(false)
+        if (truncated) break
+      }
+    }
+    if (!truncated && pending.trim()) parser.accept(pending)
+    const state = parser.snapshot()
+    if (
+      !truncated &&
+      (!state.terminal ||
+        !["stop", "end_turn", "completed"].includes(state.finish))
+    )
+      throw new Error("SSE 检测响应未正常完成，不能评分。")
+    report(true)
+    return { ...state, truncated }
+  } finally {
+    signal.removeEventListener("abort", abort)
+    await reader.cancel().catch(() => {})
+    reader.releaseLock()
+  }
+}
+
+async function sampleChallenge(
+  config,
+  challenge,
+  fetchImpl,
+  outerSignal,
+  update = () => {},
+) {
   const timeout = AbortSignal.timeout(config.timeoutSeconds * 1000)
   const signal = outerSignal ? AbortSignal.any([timeout, outerSignal]) : timeout
   const sample = {
@@ -386,10 +472,17 @@ async function sampleChallenge(config, challenge, fetchImpl, outerSignal) {
     expected_count: challenge.expected_count,
     response_model: null,
     error: null,
+    text: "",
   }
+  const report = () => update({ ...sample })
   try {
     signal.throwIfAborted()
-    const request = buildRequest(config, challenge.prompt)
+    sample.state = "waiting"
+    report()
+    const request = buildRequest(
+      { ...config, parallel: config.parallel ? 3 : 1 },
+      challenge.prompt,
+    )
     if ("error" in request) throw new Error(request.error)
     const headers = new Headers(request.headers)
     for (const [key, value] of Object.entries(config.headers))
@@ -401,17 +494,43 @@ async function sampleChallenge(config, challenge, fetchImpl, outerSignal) {
       redirect: "error",
       signal,
     })
-    const raw = await readBoundedResponse(response, signal)
-    if (!response.ok) throw new Error(`HTTP ${response.status}: ${raw}`)
+    if (!response.ok)
+      throw new Error(
+        `HTTP ${response.status}: ${await readBoundedResponse(response, signal)}`,
+      )
     const parsed = response.headers
       .get("content-type")
       ?.toLowerCase()
       .includes("text/event-stream")
-      ? parseSseReply(raw, config.api)
-      : parseJsonReply(JSON.parse(raw), config.api)
+      ? await readStreamingReply(
+          response,
+          signal,
+          config,
+          challenge,
+          (text, count, responseModel) => {
+            Object.assign(sample, {
+              state: "streaming",
+              text,
+              count,
+              response_model: responseModel
+                ? safeError(responseModel, config.apiKey, config.headers)
+                : null,
+            })
+            report()
+          },
+        )
+      : parseJsonReply(
+          JSON.parse(await readBoundedResponse(response, signal)),
+          config.api,
+        )
     const numbers = parseNumbers(parsed.text)
     const minimum = Math.max(80, Math.ceil(challenge.expected_count * 0.55))
-    sample.count = Math.min(numbers.length, challenge.expected_count)
+    sample.count = config.looseMode
+      ? Math.min(numbers.length, challenge.expected_count)
+      : numbers.length
+    sample.text = (
+      config.looseMode ? numbers.slice(0, challenge.expected_count) : numbers
+    ).join(", ")
     sample.response_model = parsed.responseModel
       ? safeError(parsed.responseModel, config.apiKey, config.headers)
       : null
@@ -420,11 +539,15 @@ async function sampleChallenge(config, challenge, fetchImpl, outerSignal) {
         `有效整数不足：收到 ${numbers.length} 个，至少需要 ${minimum} 个。`,
       )
     sample.state =
-      numbers.length > challenge.expected_count ? "truncated" : "complete"
+      parsed.truncated ||
+      (config.looseMode && numbers.length > challenge.expected_count)
+        ? "truncated"
+        : "complete"
+    report()
     return {
       sample,
       output: {
-        text: numbers.slice(0, challenge.expected_count).join(", "),
+        text: sample.text,
         expected_count: challenge.expected_count,
       },
     }
@@ -435,6 +558,7 @@ async function sampleChallenge(config, challenge, fetchImpl, outerSignal) {
       : timeout.aborted
         ? `检测请求超过 ${config.timeoutSeconds} 秒。`
         : safeError(error, config.apiKey, config.headers)
+    report()
     return {
       sample,
       output: { text: "", expected_count: challenge.expected_count },
@@ -445,18 +569,44 @@ async function sampleChallenge(config, challenge, fetchImpl, outerSignal) {
 /** Run real lmfpd challenge generation/scoring through the service's SSRF-safe transport. */
 export async function runDetection(
   input,
-  { fetchImpl, signal, detector } = {},
+  { fetchImpl, signal, detector, onProgress } = {},
 ) {
   const config = normalizeDetectionInput(input)
   if (typeof fetchImpl !== "function")
     throw new Error("runDetection requires the server safe fetchImpl.")
   const reference = detector ?? (await loadReferenceDetector())
   const challenges = generateChallenges(config.count)
-  const results = await Promise.all(
-    challenges.map((challenge) =>
-      sampleChallenge(config, challenge, fetchImpl, signal),
-    ),
-  )
+  const update = (index) => (sample) =>
+    onProgress?.({ type: "sample", index, sample })
+  for (const [index, challenge] of challenges.entries())
+    update(index)({
+      state: "queued",
+      count: 0,
+      expected_count: challenge.expected_count,
+      text: "",
+      response_model: null,
+      error: null,
+    })
+  let results
+  if (config.parallel)
+    results = await Promise.all(
+      challenges.map((challenge, index) =>
+        sampleChallenge(config, challenge, fetchImpl, signal, update(index)),
+      ),
+    )
+  else {
+    results = []
+    for (const [index, challenge] of challenges.entries())
+      results.push(
+        await sampleChallenge(
+          config,
+          challenge,
+          fetchImpl,
+          signal,
+          update(index),
+        ),
+      )
+  }
   const samples = results.map((result) => result.sample)
   let analysis = null
   let error = null
@@ -464,7 +614,11 @@ export async function runDetection(
     samples.some((sample) => ["complete", "truncated"].includes(sample.state))
   ) {
     try {
-      analysis = reference.analyze(results.map((result) => result.output))
+      if (config.autoVerify)
+        analysis = reference.analyze(
+          results.map((result) => result.output),
+          { strict: !config.looseMode },
+        )
     } catch (failure) {
       error = safeError(failure, config.apiKey, config.headers)
     }
@@ -474,8 +628,23 @@ export async function runDetection(
     api: config.api,
     referenceBuiltAt: reference.builtAt,
     samples,
+    outputs: results.map((result) => result.output),
+    verificationPending: !config.autoVerify && !error,
+    looseMode: config.looseMode,
     analysis,
     error,
     disclaimer: DETECTION_DISCLAIMER,
+  }
+}
+
+/** Score a retained collection without making another model API request. */
+export async function analyzeDetectionOutputs(
+  outputs,
+  { detector, looseMode = true } = {},
+) {
+  const reference = detector ?? (await loadReferenceDetector())
+  return {
+    analysis: reference.analyze(outputs, { strict: !looseMode }),
+    referenceBuiltAt: reference.builtAt,
   }
 }

@@ -197,6 +197,8 @@ export async function createExtensionRuntime({
     releaseLock: (id, clientId) => command("release", { lockId: id, clientId }),
     releaseClient: (sessionId) => command("releaseClient", { sessionId }),
     importBackup: (payload) => command("importBackup", { payload }),
+    resolveDetectionCredential: ({ sourceId, keyId }) =>
+      command("resolveDetectionCredential", { sourceId, keyId }),
     async close() {
       for (const controller of network.values()) controller.abort()
       try {

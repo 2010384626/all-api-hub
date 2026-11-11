@@ -23,6 +23,7 @@ import {
   PRODUCT_ANALYTICS_SOURCE_KINDS,
 } from "~/services/productAnalytics/contracts"
 import { toSanitizedErrorSummary } from "~/services/verification/aiApiVerification/utils"
+import { requestWebCatalogRefresh } from "~/services/webCatalogs/snapshots"
 
 /**
  * Loads a model catalog directly from a stored API credential profile.
@@ -51,6 +52,7 @@ export function useProfileModelData(
       }
 
       return loadProfileModelCatalog({
+        ownerId: `profile:${currentProfile.id}`,
         apiType: currentProfile.apiType,
         baseUrl: currentProfile.baseUrl,
         apiKey: currentProfile.apiKey,
@@ -133,6 +135,7 @@ export function useProfileModelData(
 
   const loadPricingData = useCallback(async () => {
     if (!currentProfile) return
+    await requestWebCatalogRefresh("models", `profile:${currentProfile.id}`)
     await query.refetch()
   }, [currentProfile, query])
 

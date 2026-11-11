@@ -10,13 +10,15 @@ export default defineConfig({
     ...sharedConfig.extract,
     input: [
       "src/features/ModelFingerprint/**/*.{ts,tsx}",
+      "src/features/WebCatalogSchedule/**/*.{ts,tsx}",
       "src/features/OptionsMenu/getMenuItemLabel.ts",
     ],
     // Keep existing application namespace files outside this scoped pass.
-    ignore: ["src/locales/*/!(modelFingerprint).json"],
+    ignore: ["src/locales/*/!(modelFingerprint|catalogPersistence).json"],
     ignoreNamespaces: ["ui"],
     primaryLanguage: "zh-CN",
     secondaryLanguages: ["en"],
-    preservePatterns: [],
+    // This Web-specific error is also rendered by shared account/key flows.
+    preservePatterns: ["catalogPersistence:credentialRedacted"],
   },
 })

@@ -44,6 +44,7 @@ import {
   PRODUCT_ANALYTICS_RESULTS,
   PRODUCT_ANALYTICS_SOURCE_KINDS,
 } from "~/services/productAnalytics/contracts"
+import { requestWebCatalogRefresh } from "~/services/webCatalogs/snapshots"
 import type { DisplaySiteData } from "~/types"
 
 /**
@@ -102,8 +103,8 @@ export function useSingleAccountModelData(params: {
     staleTime:
       currentReadiness?.route ===
       MODEL_LIST_ACCOUNT_SOURCE_ROUTES.ProviderCatalog
-        ? currentReadiness.providerModelCatalog.personalized?.cacheTtlMs ??
-          currentReadiness.providerModelCatalog.source.cacheTtlMs
+        ? (currentReadiness.providerModelCatalog.personalized?.cacheTtlMs ??
+          currentReadiness.providerModelCatalog.source.cacheTtlMs)
         : MODEL_PRICING_CACHE_TTL_MS,
     refetchOnWindowFocus: false,
     retry: shouldRetryModelPricingQuery,
@@ -187,8 +188,7 @@ export function useSingleAccountModelData(params: {
 
     if (query.isError) {
       const typedError = (query.error ?? undefined) as
-        | { code?: string }
-        | undefined
+        { code?: string } | undefined
 
       if (typedError?.code === MODEL_LIST_DATA_ERROR_CODES.INVALID_FORMAT) {
         setDataFormatError(true)
@@ -288,6 +288,7 @@ export function useSingleAccountModelData(params: {
         createModelPricingCacheKey(currentAccount),
       )
     }
+    await requestWebCatalogRefresh("models", `account:${currentAccount.id}`)
     await query.refetch()
   }, [
     currentAccount,
@@ -306,9 +307,9 @@ export function useSingleAccountModelData(params: {
       !scopedFallbackCatalogLoadErrorMessage)
   const unsupportedSource = Boolean(
     query.isError &&
-      isUnsupportedModelPricingError(query.error) &&
-      currentAccount &&
-      currentReadiness?.route === MODEL_LIST_ACCOUNT_SOURCE_ROUTES.Unsupported,
+    isUnsupportedModelPricingError(query.error) &&
+    currentAccount &&
+    currentReadiness?.route === MODEL_LIST_ACCOUNT_SOURCE_ROUTES.Unsupported,
   )
 
   const pricingContexts: AccountPricingContext[] = useMemo(() => {
@@ -318,7 +319,7 @@ export function useSingleAccountModelData(params: {
       ? scopedFallbackCatalogContext
         ? [scopedFallbackCatalogContext]
         : []
-      : query.data?.contexts ?? []
+      : (query.data?.contexts ?? [])
     // Catalog facts are cached; account display/action inputs remain live.
     return contexts.map((context) => ({ ...context, account: currentAccount }))
   }, [

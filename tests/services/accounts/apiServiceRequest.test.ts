@@ -123,6 +123,95 @@ const buildStoredAccount = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 })
 
+describe("Anyrouter credentials imported into the Web service", () => {
+  beforeEach(() => vi.stubGlobal("__AAH_WEB__", true))
+  afterEach(() => vi.unstubAllGlobals())
+
+  it("preserves the missing-auth error for None instead of inspecting unused placeholders", () => {
+    expect(() =>
+      createDisplayAccountRequestContext({
+        ...ACCOUNT,
+        tagIds: [],
+        siteType: SITE_TYPES.ANYROUTER,
+        authType: AuthTypeEnum.None,
+        token: "<redacted>",
+        cookieAuthSessionCookie: "<redacted>",
+      }),
+    ).toThrowError(
+      expect.objectContaining({
+        name: "StoredAccountApiContextError",
+        code: "MISSING_CREDENTIAL",
+      }),
+    )
+  })
+
+  it.each([
+    [AuthTypeEnum.AccessToken, "<redacted>", "session=valid-fixture"],
+    [AuthTypeEnum.Cookie, "valid-fixture-token", "<redacted>"],
+    [AuthTypeEnum.Cookie, "<redacted>", ""],
+  ])(
+    "rejects a redacted active credential in %s mode before creating a request",
+    (authType, token, cookie) => {
+      const display = {
+        ...ACCOUNT,
+        tagIds: [],
+        siteType: SITE_TYPES.ANYROUTER,
+        authType,
+        token,
+        cookieAuthSessionCookie: cookie,
+      }
+      const stored = buildStoredAccount({
+        site_type: SITE_TYPES.ANYROUTER,
+        authType,
+        account_info: { id: "1", access_token: token },
+        cookieAuth: { sessionCookie: cookie },
+      })
+      for (const create of [
+        () => createDisplayAccountRequestContext(display),
+        () => createAccountApiRequestFromStoredAccount(stored),
+      ]) {
+        expect(create).toThrowError(ApiError)
+        expect(create).toThrowError(
+          expect.objectContaining({
+            code: API_ERROR_CODES.HTTP_401,
+            statusCode: 401,
+          }),
+        )
+      }
+    },
+  )
+
+  it("keeps a valid Anyrouter token usable when an unused Cookie was redacted", () => {
+    const { request } = createDisplayAccountRequestContext({
+      ...ACCOUNT,
+      tagIds: [],
+      siteType: SITE_TYPES.ANYROUTER,
+      token: "valid-fixture-token",
+      cookieAuthSessionCookie: "<redacted>",
+    })
+    expect(request.auth).toMatchObject({
+      authType: AuthTypeEnum.AccessToken,
+      accessToken: "valid-fixture-token",
+    })
+  })
+
+  it("uses a valid Anyrouter Cookie without sending an old token placeholder as Bearer auth", () => {
+    const { request } = createAccountApiRequestFromStoredAccount(
+      buildStoredAccount({
+        site_type: SITE_TYPES.ANYROUTER,
+        authType: AuthTypeEnum.Cookie,
+        account_info: { id: "1", access_token: "<redacted>" },
+        cookieAuth: { sessionCookie: "session=valid-fixture" },
+      }),
+    )
+    expect(request.auth).toMatchObject({
+      authType: AuthTypeEnum.Cookie,
+      accessToken: "",
+      cookie: "session=valid-fixture",
+    })
+  })
+})
+
 describe("display account API context and native runtime keys", () => {
   let fetchInviteLink: ReturnType<typeof vi.fn>
   let fetchServiceCredential: ReturnType<typeof vi.fn>

@@ -26,9 +26,12 @@ import { useKeyManagementViewModel } from "~/features/KeyManagement/workspace/us
 import { NewApiManagedVerificationDialog } from "~/features/ManagedSiteVerification/NewApiManagedVerificationDialog"
 import AddTokenDialog from "~/features/TokenProvisioning/creation/AddTokenDialog"
 import { OneTimeSecretDialog } from "~/features/TokenProvisioning/secretDelivery/OneTimeSecretDialog"
+import { WebCatalogSchedule } from "~/features/WebCatalogSchedule"
+import { isRedactedCredential } from "~/services/accounts/identity/credentialPlaceholder"
 import { CREATED_RUNTIME_SECRET_CORRELATION_KINDS as correlationKinds } from "~/services/accounts/keys/createdRuntimeSecret"
 import { ACCOUNT_KEY_RESOURCE_FAILURE_CODES } from "~/services/apiAdapters/contracts/accountKeyResource"
 import { INVENTORY_SECRET_AVAILABILITIES as secretAvailability } from "~/services/apiAdapters/contracts/inventorySecret"
+import { isWebService } from "~/utils/browser/webService"
 import { revealNavigationTarget } from "~/utils/dom/navigationTarget"
 import {
   openApiCredentialProfilesPage,
@@ -80,6 +83,7 @@ export default function KeyManagement(props: {
     "common",
     "apiCredentialProfiles",
   ])
+  const { t: catalogT } = useTranslation("catalogPersistence")
   const {
     keyProvisioning,
     provisioningAccount,
@@ -154,6 +158,17 @@ export default function KeyManagement(props: {
     canClearAssociationRoute,
     showAssociationRouteNotice,
   } = useKeyManagementViewModel(routeParams)
+  const redactedAccounts = isWebService()
+    ? displayData.filter(
+        (account) =>
+          (!selectedAccount ||
+            selectedAccount === KEY_MANAGEMENT_ALL_ACCOUNTS_VALUE ||
+            selectedAccount === account.id) &&
+          (account.authType === "cookie"
+            ? isRedactedCredential(account.cookieAuthSessionCookie)
+            : isRedactedCredential(account.token)),
+      )
+    : []
   const createdKeyFlow =
     nativeKeys.createdSecret?.correlation.kind ===
     correlationKinds.AccountKeyResource
@@ -172,7 +187,7 @@ export default function KeyManagement(props: {
   }, [setIsAccountSelectorOpen])
 
   return (
-    <div className="py-density-4 sm:py-density-6 px-4 sm:px-6">
+    <div className="px-4 py-density-4 sm:px-6 sm:py-density-6">
       <Header
         onProvisionKeys={
           provisioningAccount
@@ -328,6 +343,17 @@ export default function KeyManagement(props: {
         />
       ) : null}
 
+      <WebCatalogSchedule kind="keys" />
+      {redactedAccounts.length > 0 && (
+        <Alert
+          variant="warning"
+          compact
+          title={catalogT("credentialRedacted")}
+          description={redactedAccounts
+            .map((account) => account.name)
+            .join("、")}
+        />
+      )}
       <TokenList
         isLoading={isLoading}
         entries={entries}
@@ -397,7 +423,7 @@ export default function KeyManagement(props: {
       {!isManagedSiteConfigComplete ? (
         <Notice
           tone="default"
-          className="mt-density-6 mx-auto max-w-2xl text-left"
+          className="mx-auto mt-density-6 max-w-2xl text-left"
           description={
             <span>
               {t("keyManagement:managedSiteSetupRecovery.description")}{" "}

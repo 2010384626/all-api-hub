@@ -9,6 +9,7 @@ import {
   Input,
   Label,
   SearchableSelect,
+  Switch,
   Textarea,
 } from "~/components/ui"
 import {
@@ -17,6 +18,8 @@ import {
 } from "~/services/accounts/keys/accountRuntimeKeys"
 import { toSanitizedErrorSummary } from "~/services/verification/aiApiVerification/utils"
 
+import { fingerprintRequest } from "./api"
+import { DetectionResultCard } from "./DetectionResultCard"
 import {
   loadFingerprintKeys,
   loadFingerprintModels,
@@ -25,6 +28,9 @@ import {
   type FingerprintCredential,
   type FingerprintSource,
 } from "./library"
+import { SavedDetections } from "./SavedDetections"
+import { readDetectionStream } from "./stream"
+import type { DetectionResult, DetectionTarget } from "./types"
 
 type Preset = {
   id: string
@@ -32,20 +38,6 @@ type Preset = {
   api: string
   userAgent: string
   headers: Record<string, string>
-}
-type DetectionResult = {
-  error?: string
-  samples?: { state: string; count: number; error?: string }[]
-  analysis?: {
-    prediction?: string
-    prediction_name?: string
-    results?: {
-      model?: string
-      display_name?: string
-      probability?: number
-      score?: number
-    }[]
-  }
 }
 const DEFAULT_PRESETS: Preset[] = [
   {
@@ -91,6 +83,21 @@ export default function ModelFingerprint() {
   const [protocol, setProtocol] = useState("chat_completions")
   const [ua, setUa] = useState(DEFAULT_PRESETS[0]!.userAgent)
   const [headersText, setHeadersText] = useState("{}")
+  const [stream, setStream] = useState(false)
+  const [parallel, setParallel] = useState(true)
+  const [looseMode, setLooseMode] = useState(true)
+  const [autoVerify, setAutoVerify] = useState(true)
+  const [effort, setEffort] = useState("")
+  const [serviceTier, setServiceTier] = useState("default")
+  const [configLoaded, setConfigLoaded] = useState(false)
+  const [configStatus, setConfigStatus] = useState<
+    "saved" | "saving" | "error"
+  >("saved")
+  const [verifying, setVerifying] = useState(false)
+  const configQueue = useRef(Promise.resolve())
+  const savedConfig = useRef("")
+  const forceModels = useRef(false)
+
   const [manualUrl, setManualUrl] = useState("")
   const [manualKey, setManualKey] = useState("")
   const [syncing, setSyncing] = useState(false)
@@ -99,6 +106,8 @@ export default function ModelFingerprint() {
   const [error, setError] = useState("")
   const [result, setResult] = useState<DetectionResult | null>(null)
   const [running, setRunning] = useState(false)
+  const [savedRevision, setSavedRevision] = useState(0)
+  const [resultContext, setResultContext] = useState("")
   const [modelsRevision, setModelsRevision] = useState(0)
   const controller = useRef<AbortController | null>(null)
   const source = sources.find((item) => item.id === sourceId)
@@ -119,6 +128,120 @@ export default function ModelFingerprint() {
       ),
     [credential, manualKey],
   )
+
+  useEffect(() => {
+    const abort = new AbortController()
+    void fingerprintRequest<{ config: Partial<DetectionTarget> }>(
+      "detection/config",
+      { signal: abort.signal },
+    )
+      .then(({ config }) => {
+        if (config.preset) setPresetId(config.preset)
+        if (config.api) setProtocol(config.api)
+        if (config.userAgent !== undefined) setUa(config.userAgent)
+        if (config.headers)
+          setHeadersText(JSON.stringify(config.headers, null, 2))
+        if (typeof config.stream === "boolean") setStream(config.stream)
+        if (typeof config.parallel === "boolean") setParallel(config.parallel)
+        if (typeof config.looseMode === "boolean")
+          setLooseMode(config.looseMode)
+        if (typeof config.autoVerify === "boolean")
+          setAutoVerify(config.autoVerify)
+        if (config.effort !== undefined) setEffort(config.effort)
+        if (config.serviceTier) setServiceTier(config.serviceTier)
+        setConfigLoaded(true)
+      })
+      .catch((failure) => {
+        if (!abort.signal.aborted) {
+          setError(toSanitizedErrorSummary(failure, []))
+          setConfigStatus("error")
+        }
+      })
+    return () => abort.abort()
+  }, [])
+
+  useEffect(() => {
+    if (!configLoaded) return
+    let headers: Record<string, string>
+    try {
+      headers = JSON.parse(headersText)
+      if (
+        !headers ||
+        Array.isArray(headers) ||
+        typeof headers !== "object" ||
+        Object.values(headers).some((value) => typeof value !== "string")
+      )
+        return
+    } catch {
+      return
+    }
+    const config = {
+      preset: presetId,
+      api: protocol,
+      userAgent: ua,
+      headers,
+      stream,
+      parallel,
+      looseMode,
+      autoVerify,
+      effort,
+      serviceTier,
+    }
+    const serialized = JSON.stringify(config)
+    if (savedConfig.current === serialized) return
+    setConfigStatus("saving")
+    let mounted = true
+    const timer = window.setTimeout(() => {
+      configQueue.current = configQueue.current
+        .catch(() => {})
+        .then(async () => {
+          try {
+            await fingerprintRequest("detection/config", {
+              method: "PATCH",
+              body: config,
+            })
+            savedConfig.current = serialized
+            if (mounted) setConfigStatus("saved")
+          } catch {
+            if (mounted) setConfigStatus("error")
+          }
+        })
+    }, 500)
+    return () => {
+      mounted = false
+      window.clearTimeout(timer)
+    }
+  }, [
+    configLoaded,
+    headersText,
+    presetId,
+    protocol,
+    ua,
+    stream,
+    parallel,
+    looseMode,
+    autoVerify,
+    effort,
+    serviceTier,
+  ])
+
+  const verify = async () => {
+    if (!result?.historyId) return
+    setVerifying(true)
+    setError("")
+    try {
+      const verified = await fingerprintRequest<DetectionResult>(
+        `detection/history/${result.historyId}/verify`,
+        { method: "POST" },
+      )
+      setResult(verified)
+      setSavedRevision((value) => value + 1)
+    } catch (failure) {
+      setError(sanitize(failure))
+    } finally {
+      setVerifying(false)
+    }
+  }
 
   const synchronize = useCallback(async () => {
     setSyncing(true)
@@ -171,13 +294,6 @@ export default function ModelFingerprint() {
       return
     }
     if (source.kind === "profile") {
-      setProtocol(
-        source.profile.apiType === "anthropic"
-          ? "messages"
-          : source.profile.apiType === "openai"
-            ? "responses"
-            : "chat_completions",
-      )
       setLoadingKeys(false)
       return
     }
@@ -232,19 +348,6 @@ export default function ModelFingerprint() {
   }, [source, key])
 
   useEffect(() => {
-    setHeadersText(
-      JSON.stringify(
-        {
-          ...credential?.requestHeaders,
-          ...presets.find((p) => p.id === presetId)?.headers,
-        },
-        null,
-        2,
-      ),
-    )
-  }, [credential, presets, presetId])
-
-  useEffect(() => {
     const abort = new AbortController()
     setModels([])
     setModel("")
@@ -255,7 +358,9 @@ export default function ModelFingerprint() {
     }
     setLoadingModels(true)
     setError("")
-    void loadFingerprintModels(credential, protocol, abort.signal)
+    const refresh = forceModels.current
+    forceModels.current = false
+    void loadFingerprintModels(credential, protocol, abort.signal, refresh)
       .then((next) => {
         if (abort.signal.aborted) return
         setModels(next)
@@ -293,14 +398,13 @@ export default function ModelFingerprint() {
     setResult(null)
   }
 
-  const detect = async () => {
+  const getTarget = (): DetectionTarget | null => {
     setError("")
-    setResult(null)
     const apiKey = manual ? manualKey : credential?.apiKey
     const baseUrl = manual ? manualUrl : credential?.baseUrl
     if (!apiKey || !baseUrl || !model.trim()) {
       setError(t("required"))
-      return
+      return null
     }
     if (
       !manual &&
@@ -310,7 +414,7 @@ export default function ModelFingerprint() {
       })
     ) {
       setError(t("modelRestricted"))
-      return
+      return null
     }
     let headers: Record<string, string>
     try {
@@ -324,8 +428,33 @@ export default function ModelFingerprint() {
         throw new Error()
     } catch {
       setError(t("headersInvalid"))
-      return
+      return null
     }
+    return {
+      sourceId,
+      sourceLabel: source?.label || t("manual"),
+      keyId: manual ? undefined : keyId,
+      baseUrl,
+      ...(manual ? { apiKey } : {}),
+      model: model.trim(),
+      preset: presetId,
+      api: protocol,
+      userAgent: ua,
+      headers: { ...credential?.requestHeaders, ...headers },
+      stream,
+      parallel,
+      looseMode,
+      autoVerify,
+      effort,
+      serviceTier,
+    }
+  }
+
+  const detect = async () => {
+    const target = getTarget()
+    if (!target) return
+    setResult(null)
+    setResultContext("")
     const abort = new AbortController()
     controller.current = abort
     setRunning(true)
@@ -343,20 +472,26 @@ export default function ModelFingerprint() {
         signal: abort.signal,
         headers: {
           "content-type": "application/json",
+          accept: stream ? "text/event-stream" : "application/json",
           "x-csrf-token": session.csrfToken,
         },
-        body: JSON.stringify({
-          baseUrl,
-          apiKey,
-          model: model.trim(),
-          preset: presetId,
-          api: protocol,
-          userAgent: ua,
-          headers,
-        }),
+        body: JSON.stringify(target),
       })
-      const data = await response.json()
-      if (!response.ok) throw new Error(data.error || t("failed"))
+      if (!response.ok) {
+        const failure = await response.json()
+        throw new Error(failure.error || t("failed"))
+      }
+      const data = response.headers
+        .get("content-type")
+        ?.includes("text/event-stream")
+        ? await readDetectionStream(response, (progress) =>
+            setResult((current) => {
+              const samples = [...(current?.samples || [])]
+              samples[progress.index] = progress.sample
+              return { ...current, samples }
+            }),
+          )
+        : await response.json()
       setResult(data)
     } catch (failure) {
       setError(abort.signal.aborted ? t("cancelled") : sanitize(failure))
@@ -364,6 +499,7 @@ export default function ModelFingerprint() {
       if (controller.current === abort) {
         controller.current = null
         setRunning(false)
+        setSavedRevision((value) => value + 1)
       }
     }
   }
@@ -472,7 +608,10 @@ export default function ModelFingerprint() {
                 size="sm"
                 variant="ghost"
                 disabled={!credential || loadingModels || running}
-                onClick={() => setModelsRevision((value) => value + 1)}
+                onClick={() => {
+                  forceModels.current = true
+                  setModelsRevision((value) => value + 1)
+                }}
               >
                 {t("refreshModels")}
               </Button>
@@ -510,6 +649,93 @@ export default function ModelFingerprint() {
               ]}
             />
           </div>
+          <div className="grid gap-density-4 sm:grid-cols-2">
+            <div className="space-y-density-2">
+              <Label htmlFor="fingerprint-effort">{t("effort")}</Label>
+              <Input
+                id="fingerprint-effort"
+                value={effort}
+                onChange={(event) => setEffort(event.target.value)}
+                disabled={running || !configLoaded}
+                placeholder={t("effortHint")}
+              />
+            </div>
+            <div className="space-y-density-2">
+              <Label htmlFor="fingerprint-tier">{t("serviceTier")}</Label>
+              <SearchableSelect
+                id="fingerprint-tier"
+                value={serviceTier}
+                onChange={setServiceTier}
+                disabled={running || !configLoaded}
+                options={[
+                  { value: "default", label: t("tierDefault") },
+                  { value: "flex", label: "Flex" },
+                  { value: "fast", label: "Fast" },
+                  { value: "ultrafast", label: "Ultrafast" },
+                ]}
+              />
+            </div>
+          </div>
+          <div className="divide-y divide-border rounded-lg border border-border px-density-3">
+            <div className="flex items-center justify-between gap-density-3 py-density-3">
+              <div>
+                <Label htmlFor="fingerprint-stream">{t("stream")}</Label>
+                <p className="mt-density-1 text-xs text-muted-foreground">
+                  {t("streamHint")}
+                </p>
+              </div>
+              <Switch
+                id="fingerprint-stream"
+                checked={stream}
+                onChange={setStream}
+                disabled={running || !configLoaded}
+              />
+            </div>
+            <div className="flex items-center justify-between gap-density-3 py-density-3">
+              <div>
+                <Label htmlFor="fingerprint-parallel">{t("parallel")}</Label>
+                <p className="mt-density-1 text-xs text-muted-foreground">
+                  {t("parallelHint")}
+                </p>
+              </div>
+              <Switch
+                id="fingerprint-parallel"
+                checked={parallel}
+                onChange={setParallel}
+                disabled={running || !configLoaded}
+              />
+            </div>
+            <div className="flex items-center justify-between gap-density-3 py-density-3">
+              <div>
+                <Label htmlFor="fingerprint-loose">{t("looseMode")}</Label>
+                <p className="mt-density-1 text-xs text-muted-foreground">
+                  {t("looseHint")}
+                </p>
+              </div>
+              <Switch
+                id="fingerprint-loose"
+                checked={looseMode}
+                onChange={setLooseMode}
+                disabled={running || !configLoaded}
+              />
+            </div>
+            <div className="flex items-center justify-between gap-density-3 py-density-3">
+              <div>
+                <Label htmlFor="fingerprint-auto-verify">
+                  {t("autoVerify")}
+                </Label>
+                <p className="mt-density-1 text-xs text-muted-foreground">
+                  {t("autoVerifyHint")}
+                </p>
+              </div>
+              <Switch
+                id="fingerprint-auto-verify"
+                checked={autoVerify}
+                onChange={setAutoVerify}
+                disabled={running || !configLoaded}
+              />
+            </div>
+          </div>
           <details>
             <summary className="cursor-pointer text-sm">
               {t("advanced")}
@@ -537,6 +763,13 @@ export default function ModelFingerprint() {
               </div>
             </div>
           </details>
+          <p role="status" className="text-xs text-muted-foreground">
+            {configStatus === "saving"
+              ? t("configSaving")
+              : configStatus === "error"
+                ? t("configSaveError")
+                : t("configSaved")}
+          </p>
           {error && (
             <p className="text-sm text-destructive" role="alert">
               {error}
@@ -548,6 +781,7 @@ export default function ModelFingerprint() {
               onClick={() => void detect()}
               disabled={
                 running ||
+                !configLoaded ||
                 loadingModels ||
                 loadingKeys ||
                 !model ||
@@ -566,51 +800,33 @@ export default function ModelFingerprint() {
             )}
           </div>
         </Card>
-        <Card padding="md" className="space-y-density-4">
-          <h2 className="text-lg font-semibold">{t("result")}</h2>
-          <p className="text-sm text-muted-foreground">{t("explanation")}</p>
-          {!result && (
-            <p className="py-density-8 text-center text-muted-foreground">
-              {running ? t("running") : t("emptyResult")}
+        <div className="min-w-0 space-y-density-3">
+          {resultContext && (
+            <p className="text-sm text-muted-foreground">
+              {t("viewingHistory", { context: resultContext })}
             </p>
           )}
-          {result?.error && (
-            <p role="alert" className="text-sm text-destructive">
-              {result.error}
-            </p>
-          )}
-          {result?.analysis && (
-            <>
-              <h3 className="text-xl font-semibold">
-                {result.analysis.prediction_name || result.analysis.prediction}
-              </h3>
-              <ol className="divide-y divide-border">
-                {result.analysis.results?.slice(0, 8).map((entry, index) => (
-                  <li
-                    key={`${entry.model}-${index}`}
-                    className="flex items-center justify-between gap-4 py-density-3"
-                  >
-                    <span>
-                      {index + 1}. {entry.display_name || entry.model}
-                    </span>
-                    <span>
-                      {typeof entry.probability === "number"
-                        ? `${(entry.probability * 100).toFixed(1)}%`
-                        : entry.score?.toFixed(3)}
-                    </span>
-                  </li>
-                ))}
-              </ol>
-            </>
-          )}
-          {result?.samples?.map((sample, index) => (
-            <p key={index} className="text-sm text-muted-foreground">
-              {t("sample", { number: index + 1, integers: sample.count })}
-              {sample.error ? ` · ${sample.error}` : ""}
-            </p>
-          ))}
-        </Card>
+          <DetectionResultCard
+            key={result?.historyId || resultContext || "current"}
+            result={result}
+            running={running}
+            verifying={verifying}
+            onVerify={() => void verify()}
+          />
+        </div>
       </div>
+      <SavedDetections
+        revision={savedRevision}
+        getTarget={getTarget}
+        sanitize={sanitize}
+        onSelectResult={(saved, context) => {
+          setResult(saved)
+          setResultContext(context)
+          document
+            .querySelector('[data-testid="fingerprint-result"]')
+            ?.scrollIntoView({ behavior: "smooth", block: "start" })
+        }}
+      />
     </div>
   )
 }

@@ -3,6 +3,7 @@ import { test } from "node:test"
 
 import { loadReferenceDetector } from "../../web/server/detector-data.mjs"
 import {
+  analyzeDetectionOutputs,
   CLIENT_PRESETS,
   normalizeDetectionInput,
   runDetection,
@@ -296,4 +297,135 @@ test("pinned reference package loads and scores through the real lmfpd SDK offli
   )
   assert.ok(Array.isArray(result.results))
   assert.ok(result.model_version.base_sha256)
+})
+
+test("request controls preserve effort and tier and serialize sampling when parallel is off", async () => {
+  let inFlight = 0,
+    maximum = 0
+  const result = await runDetection(
+    {
+      ...input,
+      effort: "xhigh",
+      serviceTier: "ultrafast",
+      parallel: false,
+      looseMode: false,
+    },
+    {
+      detector: {
+        ...detector,
+        analyze(outputs, options) {
+          assert.equal(options.strict, true)
+          return detector.analyze(outputs)
+        },
+      },
+      fetchImpl: async (_url, init) => {
+        maximum = Math.max(maximum, ++inFlight)
+        const body = JSON.parse(init.body)
+        assert.equal(body.reasoning_effort, "xhigh")
+        assert.equal(body.service_tier, "ultrafast")
+        await new Promise((resolve) => setImmediate(resolve))
+        inFlight--
+        return Response.json({
+          choices: [{ message: { content: reply }, finish_reason: "stop" }],
+        })
+      },
+    },
+  )
+  assert.equal(maximum, 1)
+  assert.ok(
+    result.samples.every(
+      (sample) => sample.state === "complete" && sample.count === 340,
+    ),
+  )
+  assert.ok(
+    result.outputs.every((output) => output.text.split(", ").length === 340),
+  )
+})
+
+test("streaming progress arrives before completion and loose mode cancels after target without finish marker", async () => {
+  const events = []
+  let cancelled = 0
+  const result = await runDetection(
+    { ...input, stream: true, count: 1 },
+    {
+      detector: {
+        builtAt: "fixture",
+        analyze: () => ({ decision: "partial", probability: null }),
+      },
+      onProgress: (event) => events.push(event),
+      fetchImpl: async (_url, init) => {
+        assert.equal(JSON.parse(init.body).stream, true)
+        let sent = false
+        return new Response(
+          new ReadableStream({
+            pull(controller) {
+              if (!sent) {
+                sent = true
+                controller.enqueue(
+                  new TextEncoder().encode(
+                    `data: ${JSON.stringify({ choices: [{ delta: { content: reply + ", " } }] })}\n\n`,
+                  ),
+                )
+              } else return new Promise(() => {})
+            },
+            cancel() {
+              cancelled++
+            },
+          }),
+          { headers: { "content-type": "text/event-stream" } },
+        )
+      },
+    },
+  )
+  assert.equal(cancelled, 1)
+  assert.equal(result.samples[0].state, "truncated")
+  assert.ok(
+    events.some(
+      (event) => event.sample.state === "streaming" && event.sample.count > 0,
+    ),
+  )
+  assert.equal(events.at(-1).sample.state, "truncated")
+  assert.ok(!JSON.stringify(events).includes(input.apiKey))
+})
+
+test("strict streaming rejects missing natural completion and disabled auto verification preserves samples", async () => {
+  let analyzed = 0
+  const reference = {
+    builtAt: "fixture",
+    analyze() {
+      analyzed++
+      return { decision: "partial", probability: null }
+    },
+  }
+  const missingEnd = await runDetection(
+    { ...input, stream: true, looseMode: false, count: 1 },
+    {
+      detector: reference,
+      fetchImpl: async () =>
+        new Response(
+          `data: ${JSON.stringify({ choices: [{ delta: { content: reply } }] })}\n\n`,
+          { headers: { "content-type": "text/event-stream" } },
+        ),
+    },
+  )
+  assert.equal(missingEnd.analysis, null)
+  assert.equal(missingEnd.samples[0].state, "failed")
+  const sampled = await runDetection(
+    { ...input, autoVerify: false, count: 1 },
+    {
+      detector: reference,
+      fetchImpl: async () =>
+        Response.json({
+          choices: [{ message: { content: reply }, finish_reason: "stop" }],
+        }),
+    },
+  )
+  assert.equal(analyzed, 0)
+  assert.equal(sampled.verificationPending, true)
+  assert.ok(sampled.outputs[0].text)
+  const verified = await analyzeDetectionOutputs(sampled.outputs, {
+    detector: reference,
+  })
+  assert.equal(analyzed, 1)
+  assert.equal(verified.analysis.decision, "partial")
 })

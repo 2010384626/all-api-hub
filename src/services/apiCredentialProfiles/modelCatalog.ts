@@ -10,6 +10,7 @@ import {
   API_TYPES,
   type ApiVerificationApiType,
 } from "~/services/verification/aiApiVerification"
+import { readWebCatalogSnapshot } from "~/services/webCatalogs/snapshots"
 
 interface FetchApiCredentialModelCatalogParams {
   apiType: ApiVerificationApiType
@@ -17,12 +18,28 @@ interface FetchApiCredentialModelCatalogParams {
   apiKey: string
   requestHeaders?: Record<string, string>
   abortSignal?: AbortSignal
+  ownerId?: string
+  forceRefresh?: boolean
 }
 
 /**
  * Fetch raw model ids using a stored API credential profile.
  */
 export async function fetchApiCredentialModelIds(
+  params: FetchApiCredentialModelCatalogParams,
+): Promise<string[]> {
+  return readWebCatalogSnapshot(
+    "models",
+    params.ownerId || "credential-models",
+    JSON.stringify([params.apiType, params.baseUrl]),
+    JSON.stringify([params.apiKey, params.requestHeaders || {}]),
+    () => fetchFreshApiCredentialModelIds(params),
+    params.forceRefresh,
+  )
+}
+
+/** Fetch model identifiers from the credential provider. */
+async function fetchFreshApiCredentialModelIds(
   params: FetchApiCredentialModelCatalogParams,
 ): Promise<string[]> {
   if (

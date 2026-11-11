@@ -40,6 +40,7 @@ export function createSafeFetch({
   lookupImpl = lookup,
   fetchImpl = undiciFetch,
   AgentImpl = Agent,
+  streaming = false,
 } = {}) {
   return async function safeFetch(input, init = {}) {
     const url = validateUrl(String(input), true)
@@ -49,6 +50,7 @@ export function createSafeFetch({
       ...(init.signal ? [init.signal] : []),
     ])
     let addresses
+    let ownsResponse = false
     try {
       signal.throwIfAborted()
       addresses = await new Promise((resolve, reject) => {
@@ -91,6 +93,46 @@ export function createSafeFetch({
         await response.body?.cancel()
         throw new AppError(502, "上游返回重定向，请直接填写最终接口地址")
       }
+      if (streaming && response.body) {
+        const reader = response.body.getReader()
+        let size = 0,
+          finished = false
+        const cleanup = async () => {
+          if (!finished) {
+            finished = true
+            await dispatcher.close()
+          }
+        }
+        const body = new ReadableStream({
+          async pull(controller) {
+            try {
+              const chunk = await reader.read()
+              if (chunk.done) {
+                controller.close()
+                await cleanup()
+                return
+              }
+              size += chunk.value.byteLength
+              if (size > 4 * 1024 * 1024)
+                throw new AppError(502, "上游响应超过 4 MB 限制")
+              controller.enqueue(chunk.value)
+            } catch (error) {
+              await reader.cancel().catch(() => {})
+              controller.error(error)
+              await cleanup()
+            }
+          },
+          async cancel(reason) {
+            await reader.cancel(reason)
+            await cleanup()
+          },
+        })
+        ownsResponse = true
+        return new Response(body, {
+          status: response.status,
+          headers: response.headers,
+        })
+      }
       const chunks = []
       let size = 0
       if (response.body)
@@ -129,8 +171,9 @@ export function createSafeFetch({
         signal.aborted ? "请求超时或已取消" : "上游连接失败，请检查地址和网络",
       )
     } finally {
-      await dispatcher.close()
+      if (!ownsResponse) await dispatcher.close()
     }
   }
 }
 export const safeFetch = createSafeFetch()
+export const safeFetchStream = createSafeFetch({ streaming: true })

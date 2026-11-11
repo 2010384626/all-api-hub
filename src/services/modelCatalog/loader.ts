@@ -25,7 +25,12 @@ import {
 import { isValidProviderModelCatalogPricing } from "~/services/modelList/providerCatalogAdmission"
 import { modelPricingCache } from "~/services/models/modelPricingCache"
 import { isAbortError } from "~/services/verification/aiApiVerification/utils"
+import {
+  accountCatalogContext,
+  readWebCatalogSnapshot,
+} from "~/services/webCatalogs/snapshots"
 import type { DisplaySiteData } from "~/types"
+import { isWebService } from "~/utils/browser/webService"
 
 import { createAccountModelPricingRequest } from "./accountRequest"
 import { hasValidCatalogFacts } from "./admission"
@@ -47,7 +52,7 @@ export async function loadAccountModelCatalog(params: {
 }): Promise<{ pricing: ModelCatalogSnapshot; cacheHit: boolean }> {
   throwIfCatalogLoadAborted(params.abortSignal)
   const cacheKey = createModelPricingCacheKey(params.account)
-  const cached = await modelPricingCache.get(cacheKey)
+  const cached = isWebService() ? null : await modelPricingCache.get(cacheKey)
   throwIfCatalogLoadAborted(params.abortSignal)
   if (cached && hasValidCatalogFacts(cached))
     return { pricing: cached, cacheHit: true }
@@ -167,10 +172,9 @@ async function loadProviderModelCatalogPricing(params: {
 }): Promise<{ pricing: ModelCatalogSnapshot; cacheHit: boolean }> {
   const { capability, abortSignal } = params
   const cacheKey = createProviderModelCatalogCacheKey(capability.source.id)
-  const cached = await modelPricingCache.get(
-    cacheKey,
-    capability.source.cacheTtlMs,
-  )
+  const cached = isWebService()
+    ? null
+    : await modelPricingCache.get(cacheKey, capability.source.cacheTtlMs)
   if (
     cached &&
     isValidProviderModelCatalogPricing(cached, capability.source.provider)
@@ -449,8 +453,42 @@ export async function loadAccountCatalogSource(params: {
   abortSignal?: AbortSignal
   includeRuntimeKeyCatalogs?: boolean
 }): Promise<AccountPricingQueryResult & { cacheHit?: boolean }> {
+  const result = await readWebCatalogSnapshot(
+    "models",
+    `account:${params.account.id}`,
+    "catalog",
+    accountCatalogContext(params.account),
+    () => loadFreshAccountCatalogSource(params),
+  )
+  return {
+    ...result,
+    contexts: result.contexts.map((context) => ({
+      ...context,
+      account: params.account,
+    })),
+  }
+}
+
+/** Load account catalog facts after invalidating the Web snapshot. */
+async function loadFreshAccountCatalogSource(params: {
+  account: DisplaySiteData
+  loadScope: object
+  abortSignal?: AbortSignal
+  includeRuntimeKeyCatalogs?: boolean
+}): Promise<AccountPricingQueryResult & { cacheHit?: boolean }> {
   const { account, abortSignal } = params
   const readiness = resolveModelListAccountSourceReadiness(account)
+  if (isWebService()) {
+    await modelPricingCache.invalidate(createModelPricingCacheKey(account))
+    if (readiness.route === MODEL_LIST_ACCOUNT_SOURCE_ROUTES.DirectPricing)
+      readiness.modelPricing.invalidateCache?.()
+    if (readiness.route === MODEL_LIST_ACCOUNT_SOURCE_ROUTES.ProviderCatalog)
+      await modelPricingCache.invalidate(
+        createProviderModelCatalogCacheKey(
+          readiness.providerModelCatalog.source.id,
+        ),
+      )
+  }
   if (readiness.route === MODEL_LIST_ACCOUNT_SOURCE_ROUTES.ProviderCatalog) {
     const capability = readiness.providerModelCatalog
     const result: PersonalizedProviderModelCatalogLoadResult =

@@ -66,10 +66,14 @@ export async function loadFingerprintSources(): Promise<FingerprintSource[]> {
 export async function loadFingerprintKeys(
   source: FingerprintSource,
   signal?: AbortSignal,
+  forceRefresh = false,
 ): Promise<AccountRuntimeKey[]> {
   if (source.kind === "profile") return []
   return (
-    await fetchDisplayAccountRuntimeKeys(source.account, { signal })
+    await fetchDisplayAccountRuntimeKeys(source.account, {
+      signal,
+      forceRefresh,
+    })
   ).filter(
     (key) =>
       key.status === "active" &&
@@ -117,9 +121,14 @@ export async function loadFingerprintModels(
   credential: FingerprintCredential,
   protocol: string,
   signal?: AbortSignal,
+  forceRefresh = false,
 ) {
   const models = normalizeApiCredentialModelIds(
     await fetchApiCredentialModelIds({
+      ownerId: credential.id.startsWith("profile:")
+        ? credential.id
+        : "credential-models",
+      forceRefresh,
       apiType:
         protocol === "messages"
           ? API_TYPES.ANTHROPIC
