@@ -1,0 +1,18 @@
+# Include inside your existing HTTPS server block. Provision its certificate
+# using your usual Nginx/ACME setup. Match PUBLIC_ORIGIN to the external origin.
+# For a dedicated subdomain set BASE_PATH=/ and replace /hub/ below with /.
+location = /hub { return 308 /hub/; }
+location /hub/ {
+    # No trailing slash: preserve /hub/ for the application's BASE_PATH.
+    proxy_pass http://127.0.0.1:8787;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header Connection "";
+    client_max_body_size 5m;
+    proxy_connect_timeout 10s;
+    proxy_read_timeout 360s;
+    proxy_send_timeout 360s;
+    proxy_buffering off;
+}

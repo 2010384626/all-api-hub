@@ -7,6 +7,7 @@ const gitCommand = process.platform === "win32" ? "git.exe" : "git"
 const I18N_RELEVANT_PATH_PREFIXES = ["src/locales/", "src/public/_locales/"]
 const I18N_RELEVANT_PATHS = new Set([
   "i18next.config.ts",
+  "i18next.web.config.ts",
   "package.json",
   "pnpm-lock.yaml",
   "scripts/run-i18n-check-if-staged.mjs",

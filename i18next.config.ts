@@ -9,6 +9,8 @@ const secondaryLanguages = SUPPORTED_UI_LANGUAGES.filter(
 export default defineConfig({
   locales: [DEFAULT_LANG, ...secondaryLanguages],
   extract: {
+    // The VPS-only namespace has its own en/zh-CN extraction and status pass.
+    ignoreNamespaces: ["modelFingerprint"],
     input: ["src/**/*.{ts,tsx}"],
     output: (language, namespace = "common") =>
       `src/locales/${language}/${namespace}.json`,

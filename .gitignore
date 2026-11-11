@@ -72,6 +72,12 @@ pnpm-debug.log*
 lerna-debug.log*
 
 node_modules
+/.deploy/
+/web/data/
+/web/dist/
+/web/extension/
+/web/server/generated/
+/.scratch/vps-web/artifacts/
 .output
 stats.html
 stats-*.json

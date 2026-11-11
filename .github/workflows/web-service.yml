@@ -1,0 +1,44 @@
+name: Web service
+
+on:
+  push:
+    branches: [main, web-vps-native]
+  pull_request:
+    paths:
+      [
+        "web/**",
+        "src/**",
+        "tests/web/**",
+        "scripts/build-web.mjs",
+        "Dockerfile.web",
+        "Dockerfile.web.dockerignore",
+        "package.json",
+        "pnpm-lock.yaml",
+      ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  container:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and test the Node service and original UI
+        run: docker build -f Dockerfile.web --target test -t all-api-hub-web:test .
+      - name: Build runtime image
+        run: docker build -f Dockerfile.web --target runtime -t all-api-hub-web:ci .
+      - name: Start runtime and check health
+        shell: bash
+        run: |
+          set -euo pipefail
+          export ADMIN_PASSWORD=$(openssl rand -hex 24)
+          export ENCRYPTION_KEY=$(openssl rand -hex 32)
+          docker run -d --name web-smoke -p 127.0.0.1:8787:3000 -e ADMIN_PASSWORD -e ENCRYPTION_KEY -e PUBLIC_ORIGIN=http://localhost:8787 all-api-hub-web:ci
+          trap 'docker logs web-smoke; docker rm -f web-smoke' EXIT
+          for attempt in $(seq 1 45); do
+            if curl --fail --silent http://127.0.0.1:8787/api/health; then exit 0; fi
+            sleep 2
+          done
+          exit 1

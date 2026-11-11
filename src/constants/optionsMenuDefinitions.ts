@@ -1,3 +1,4 @@
+import { isWebService } from "~/utils/browser/webService"
 import { isDevUnlocked } from "~/utils/core/devMode"
 
 import { DEV_MENU_ITEM_IDS } from "./devOptionsMenuIds"
@@ -17,6 +18,14 @@ export const BASE_OPTIONS_MENU_DEFINITIONS = [
   },
   { id: MENU_ITEM_IDS.BOOKMARK, category: OPTIONS_MENU_CATEGORY_IDS.GENERAL },
   { id: MENU_ITEM_IDS.MODELS, category: OPTIONS_MENU_CATEGORY_IDS.API },
+  ...(isWebService()
+    ? [
+        {
+          id: MENU_ITEM_IDS.MODEL_FINGERPRINT,
+          category: OPTIONS_MENU_CATEGORY_IDS.API,
+        } as const,
+      ]
+    : []),
   { id: MENU_ITEM_IDS.KEYS, category: OPTIONS_MENU_CATEGORY_IDS.API },
   {
     id: MENU_ITEM_IDS.AUTO_CHECKIN,

@@ -280,6 +280,7 @@ test("page roots and card backdrops keep the workspace canvas behind every corne
   for (const { label, preferences } of appearances) {
     await seedUserPreferences(await getServiceWorker(context), preferences)
     for (const route of Object.values(MENU_ITEM_IDS)) {
+      if (route === MENU_ITEM_IDS.MODEL_FINGERPRINT) continue
       // Force document navigation: a hash-only change leaves the departing
       // page's heading and cards visible while its exit animation runs.
       await page.goto(`${base}?surface-check=${route}#${route}`)

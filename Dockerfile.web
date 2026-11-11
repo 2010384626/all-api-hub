@@ -1,0 +1,41 @@
+FROM node:24-bookworm-slim AS dependencies
+WORKDIR /app/web
+COPY web/package.json web/package-lock.json ./
+RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
+
+FROM node:24-bookworm-slim AS ui-build
+ENV ELECTRON_SKIP_BINARY_DOWNLOAD=1 HUSKY=0
+WORKDIR /app
+RUN npm install -g pnpm@12.6.0
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+RUN pnpm install --frozen-lockfile --ignore-scripts
+COPY . .
+RUN pnpm exec wxt prepare && node scripts/build-web.mjs
+
+FROM dependencies AS test
+RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY web ./web
+COPY tests/web ./tests/web
+COPY deploy ./deploy
+COPY --from=ui-build /app/web/dist ./web/dist
+COPY --from=ui-build /app/web/server/generated ./web/server/generated
+RUN node --test tests/web/*.test.mjs
+
+FROM node:24-bookworm-slim AS runtime
+ENV NODE_ENV=production HOST=0.0.0.0 PORT=3000 DATA_DIR=/data
+WORKDIR /app
+COPY --from=dependencies /app/web/node_modules ./web/node_modules
+COPY web/package.json ./web/package.json
+COPY web/server ./web/server
+COPY web/runtime ./web/runtime
+COPY web/public ./web/public
+COPY --from=ui-build /app/web/dist ./web/dist
+COPY --from=ui-build /app/web/server/generated ./web/server/generated
+COPY LICENSE THIRD_PARTY_NOTICES.md ./
+COPY deploy/upstream.json ./deploy/upstream.json
+RUN mkdir -p /data && chown node:node /data
+USER node
+EXPOSE 3000
+HEALTHCHECK --interval=10s --timeout=3s --start-period=10s --retries=3 CMD ["node", "-e", "fetch('http://127.0.0.1:3000'+(process.env.BASE_PATH||'/').replace(/\\/?$/,'/')+'api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+CMD ["node", "web/server/index.mjs"]

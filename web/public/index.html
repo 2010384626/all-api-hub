@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light">
+    <meta name="description" content="自托管的 API 账户管理与模型指纹检测工作台">
+    <title>All API Hub · 自托管工作台</title>
+    <link rel="icon" href="data:,">
+    <link rel="stylesheet" href="style.css">
+    <script type="module" src="app.js"></script>
+  </head>
+  <body>
+    <div id="boot" class="boot" role="status"><span class="logo-mark">A</span><p>正在连接你的工作空间…</p></div>
+
+    <main id="login-view" class="login-layout" hidden>
+      <section class="login-intro">
+        <a class="brand" href="./"><span class="logo-mark">A</span><span>All API Hub <small>SELF-HOSTED</small></span></a>
+        <div><span class="eyebrow">你的服务，你的数据</span><h1>把 AI 资产，<br>放在一个地方。</h1><p>管理中转站账户、查看模型、核对模型指纹。<br>一个属于你的私有工作空间。</p></div>
+        <div class="login-foot">VPS 部署 · 共享工作空间 · 无广告</div>
+      </section>
+      <section class="login-panel">
+        <form id="login-form" class="login-form">
+          <span class="pill">私有工作空间</span><h2>欢迎回来</h2><p class="muted">输入管理员密码，进入你的控制台。</p>
+          <label for="password">管理员密码</label><input id="password" name="password" type="password" autocomplete="current-password" required autofocus>
+          <p id="login-error" class="error-text" role="alert"></p>
+          <button class="primary full" type="submit">登录工作空间 <span aria-hidden="true">→</span></button>
+          <p class="caption">密码由部署时的环境配置设定。账户数据保存在服务器中。</p>
+        </form>
+      </section>
+    </main>
+
+    <div id="workspace" class="workspace" hidden>
+      <aside class="sidebar">
+        <a class="brand" href="#overview"><span class="logo-mark">A</span><span>All API Hub <small>SELF-HOSTED</small></span></a>
+        <div class="space-label"><span class="space-avatar">私</span><div>私有工作空间<small>管理员 · 共享数据</small></div><span class="online-dot" title="已连接"></span></div>
+        <div class="nav-label">工作台</div>
+        <nav aria-label="主要导航">
+          <a href="#overview" data-view="overview"><span aria-hidden="true">◫</span>总览</a>
+          <a href="#accounts" data-view="accounts"><span aria-hidden="true">▤</span>账户管理<span id="nav-account-count" class="nav-count">0</span></a>
+          <a href="#detector" data-view="detector"><span aria-hidden="true">◎</span>模型指纹检测</a>
+          <a href="#data" data-view="data"><span aria-hidden="true">⇄</span>导入与备份</a>
+          <a href="#system" data-view="system"><span aria-hidden="true">⚙</span>部署与更新</a>
+        </nav>
+        <div class="sidebar-bottom"><span class="private-note"><span class="online-dot"></span> 服务端托管</span><button id="logout" class="quiet">退出登录 <span aria-hidden="true">↗</span></button></div>
+      </aside>
+      <div class="main-area">
+        <header class="topbar"><span>工作空间 <span class="slash">/</span> <strong id="breadcrumb">总览</strong></span><span class="topbar-status"><span class="online-dot"></span> 私有部署 <button id="logout-mobile" class="quiet mobile-only">退出</button></span></header>
+        <main class="content">
+          <section id="view-overview" data-page="overview">
+            <div class="page-heading"><div><span class="eyebrow">WORKSPACE OVERVIEW</span><h1>工作空间总览</h1><p>账户、模型与服务状态，一目了然。</p></div><button class="primary" data-add-account>＋ 添加账户</button></div>
+            <div class="metrics">
+              <article class="metric"><span>已连接账户</span><strong id="metric-accounts">0</strong><small>集中管理你的 API 服务</small></article>
+              <article class="metric"><span>已获取账户余额</span><strong id="metric-refreshed">0</strong><small>各站点独立展示计费单位</small></article>
+              <article class="metric"><span>已开启自动签到</span><strong id="metric-checkin">0</strong><small>由服务器后台执行</small></article>
+            </div>
+            <div class="overview-grid">
+              <article class="card"><div class="card-heading"><div><h2>账户概览</h2><p>最近保存的服务账户</p></div><a class="text-link" href="#accounts">查看全部 ↗</a></div><div id="overview-accounts"></div></article>
+              <article class="detector-promo"><span class="eyebrow">MODEL FINGERPRINT</span><div class="fingerprint-art" aria-hidden="true">◎</div><h2>你的模型，<br>真的是它吗？</h2><p>使用 lm-detector 的数字行为指纹，与参考模型比对。支持自定义请求客户端。</p><a class="button" href="#detector">开始检测 <span aria-hidden="true">→</span></a></article>
+            </div>
+            <article class="card activity-card"><div class="card-heading"><div><h2>最近活动</h2><p>账户刷新与签到记录</p></div><span class="pill">工作空间记录</span></div><div id="activity-list"></div></article>
+          </section>
+
+          <section id="view-accounts" data-page="accounts" hidden>
+            <div class="page-heading"><div><span class="eyebrow">YOUR API ACCOUNTS</span><h1>账户管理</h1><p>使用站点访问令牌连接账户，凭据由服务器保存。</p></div><button class="primary" data-add-account>＋ 添加账户</button></div>
+            <div class="toolbar"><input id="account-search" type="search" placeholder="搜索账户名称或地址" aria-label="搜索账户"><button id="refresh-all" class="secondary">↻ 刷新全部</button></div>
+            <div id="accounts-list" class="account-grid"></div>
+            <p class="caption section-note">New API 与兼容接口、Sub2API 支持情况取决于站点开放的接口。浏览器 Cookie 自动读取和验证码交互不适用于服务端模式。</p>
+          </section>
+
+          <section id="view-detector" data-page="detector" hidden>
+            <div class="page-heading"><div><span class="eyebrow">MODEL FINGERPRINT</span><h1>模型指纹检测</h1><p>对照参考库，查看 API 背后最接近的模型候选。</p></div><span class="pill">Powered by lm-detector</span></div>
+            <div class="detection-layout">
+              <form id="detect-form" class="card form-card">
+                <div class="card-heading"><div><h2>连接与请求</h2><p>请求从 VPS 发出，API 密钥仅用于本次检测。</p></div></div>
+                <label for="detect-account">使用已保存的 API 凭据</label><select id="detect-account"><option value="">手动输入连接信息</option></select><label for="detect-url">API Base URL</label><input id="detect-url" name="baseUrl" type="url" placeholder="https://api.example.com/v1" required>
+                <div class="form-grid"><div><label for="detect-key">API 密钥</label><input id="detect-key" name="apiKey" type="password" placeholder="sk-…" autocomplete="off" required></div><div><label for="detect-model">请求模型名称</label><input id="detect-model" name="model" placeholder="站点提供的模型名称" required maxlength="200"></div></div>
+                <div class="form-divider"></div>
+                <div class="form-grid"><div><label for="detect-preset">客户端预设</label><select id="detect-preset" name="preset"><option value="standard">标准 API</option><option value="claude-code">Claude Code</option><option value="codex-cli">Codex CLI</option></select></div><div><label for="detect-api">请求协议</label><select id="detect-api" name="api"><option value="chat_completions">OpenAI Chat Completions</option><option value="responses">OpenAI Responses</option><option value="messages">Anthropic Messages</option></select></div></div>
+                <label for="detect-ua">自定义 User-Agent</label><input id="detect-ua" name="userAgent" placeholder="留空使用预设" maxlength="512">
+                <label for="detect-headers">客户端指纹请求头 <span class="label-note">JSON 对象，可覆盖预设</span></label><textarea id="detect-headers" name="headers" rows="5" spellcheck="false" placeholder='{"x-client-name": "my-client"}'>{}</textarea>
+                <p class="caption">预设模拟应用层协议、UA 和请求头；不模拟真实客户端的 TLS / HTTP2 指纹。身份验证头由服务端根据协议生成。</p>
+                <div class="notice">检测会调用目标 API 并消耗额度。排名是参考库内的相似度，不是模型身份的确定证明。</div>
+                <p id="detect-error" class="error-text" role="alert"></p><button id="detect-submit" class="primary full" type="submit">◎ 开始模型指纹检测</button>
+              </form>
+              <aside class="card result-card" aria-live="polite"><div class="card-heading"><div><h2>检测结果</h2><p id="detection-subtitle">等待一次新的检测</p></div><span id="detection-badge" class="pill">待开始</span></div><div id="detection-result" class="result-empty"><span class="empty-symbol" aria-hidden="true">◎</span><h3>让模型留下它的指纹</h3><p>填写连接信息后开始检测。<br>结果会显示在这里。</p></div></aside>
+            </div>
+          </section>
+
+          <section id="view-data" data-page="data" hidden>
+            <div class="page-heading"><div><span class="eyebrow">YOUR DATA, YOUR CONTROL</span><h1>导入与备份</h1><p>迁移已有账户，或备份这个工作空间。</p></div></div>
+            <div class="two-columns"><article class="card form-card"><span class="feature-icon">↓</span><h2>导出完整备份</h2><p class="muted">下载账户配置与工作空间数据，方便迁移到其他服务器。</p><div class="notice">备份文件包含 API 密钥和账户访问令牌。请将文件保存到可信位置。</div><button id="export-data" class="primary">下载 JSON 备份</button></article><form id="import-form" class="card form-card"><span class="feature-icon">↑</span><h2>导入账户与配置</h2><p class="muted">选择 Web 版 JSON 备份或 All API Hub 插件备份。实际支持范围以导入结果为准。</p><label for="import-file">备份文件（JSON）</label><input id="import-file" type="file" accept=".json,application/json" required><p class="caption">导入会合并账户，不恢复历史记录或设置。完整恢复请使用数据卷备份。文件最大 1 MB，导入前建议先备份。</p><button class="secondary" type="submit">导入备份</button><p id="import-result" role="status"></p></form></div>
+          </section>
+
+          <section id="view-system" data-page="system" hidden>
+            <div class="page-heading"><div><span class="eyebrow">SELF-HOSTED OPERATIONS</span><h1>部署与更新</h1><p>让你的工作空间跟随上游持续演进。</p></div><span class="pill">VPS 服务</span></div>
+            <article class="card form-card"><h2>服务信息</h2><dl id="system-status" class="system-details"><dt>状态</dt><dd>正在加载…</dd></dl></article>
+            <div class="two-columns section-gap"><article class="card form-card"><h2>一条命令更新</h2><p class="muted">在 VPS 的项目目录中执行更新脚本。脚本同步上游、构建镜像并重启服务；具体备份与回滚步骤见部署文档。</p><div class="code-block"><code>bash deploy/update.sh</code><button id="copy-update" class="quiet">复制</button></div><p class="caption">更新在服务器终端执行。若上游产生不兼容变更，需要先处理兼容问题。</p></article><article class="card form-card"><h2>Web 版能力边界</h2><ul class="feature-list"><li>账户数据在服务器持久保存</li><li>支持 New API 兼容接口与 Sub2API 账户</li><li>模型检测支持 UA 与请求头自定义</li><li>无浏览器 Cookie 读取、页面注入或标签页联动</li><li>站点验证码和反自动化验证需手动处理</li><li>其他站点专用适配、渠道管理与用量明细尚未迁移</li></ul></article></div>
+            <p class="caption section-note">基于开源项目 All API Hub（AGPL-3.0）与 lm-detector（MIT）。部署和源码说明见仓库中的 WEB_DEPLOYMENT.md。</p>
+          </section>
+        </main>
+        <footer class="footer"><span>All API Hub · 自托管版 <a id="source-link" hidden target="_blank" rel="noopener noreferrer">源码</a></span><span>让每一次 API 调用更清楚</span></footer>
+      </div>
+    </div>
+
+    <dialog id="account-dialog" class="dialog"><form id="account-form"><div class="dialog-heading"><div><span class="eyebrow">ACCOUNT CONNECTION</span><h2 id="account-dialog-title">添加账户</h2></div><button class="icon-button" type="button" data-close-dialog aria-label="关闭">×</button></div><div class="dialog-body"><input id="account-id" type="hidden"><label for="account-name">账户名称</label><input id="account-name" name="name" placeholder="例如：我的主力 API 站点" required maxlength="100"><div class="form-grid"><div><label for="account-type">站点类型</label><select id="account-type" name="siteType"><option value="new-api">New API / 兼容站点</option><option value="sub2api">Sub2API</option><option value="credential">独立 API 凭据</option></select></div><div><label for="account-user-id">用户 ID <span class="label-note">New API</span></label><input id="account-user-id" name="userId" placeholder="站点账户的用户 ID"></div></div><label for="account-url">站点 URL</label><input id="account-url" name="baseUrl" type="url" placeholder="https://api.example.com" required><label for="account-token">账户访问令牌</label><input id="account-token" name="token" type="password" placeholder="用于查询账户余额与签到" autocomplete="off"><p id="credential-hint" class="caption">使用站点的账户访问令牌；它通常不同于用于模型调用的 API 密钥。</p><label for="account-key">模型调用 API 密钥 <span class="label-note">可选</span></label><input id="account-key" name="apiKey" type="password" placeholder="用于查询可用模型" autocomplete="off"><label class="checkbox-label"><input id="account-auto" name="autoCheckin" type="checkbox">启用服务器自动签到</label><p id="account-error" class="error-text" role="alert"></p></div><div class="dialog-actions"><button class="secondary" type="button" data-close-dialog>取消</button><button class="primary" type="submit">保存账户</button></div></form></dialog>
+    <dialog id="detail-dialog" class="dialog"><div class="dialog-heading"><h2 id="detail-title">账户详情</h2><button class="icon-button" type="button" data-close-dialog aria-label="关闭">×</button></div><div id="detail-body" class="dialog-body"></div><div class="dialog-actions"><button class="secondary" type="button" data-close-dialog>关闭</button></div></dialog>
+    <div id="toast" class="toast" role="status" hidden></div>
+  </body>
+</html>

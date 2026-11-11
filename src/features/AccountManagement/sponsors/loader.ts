@@ -1,5 +1,6 @@
 import { getExtensionVersion } from "~/utils/browser/runtime"
 import { detectBrowserFamily } from "~/utils/browser/userAgent"
+import { isWebService } from "~/utils/browser/webService"
 import { createLogger } from "~/utils/core/logger"
 
 import {
@@ -149,6 +150,8 @@ async function persistCachedSponsorCatalog(
 export async function refreshSponsorRecommendations(
   options: LoadSponsorRecommendationsOptions,
 ): Promise<LoadSponsorRecommendationsResult | null> {
+  if (isWebService())
+    return { items: [], source: SPONSOR_CATALOG_SOURCES.Bundled }
   const remoteCatalog = await fetchRemoteSponsorCatalog()
   if (!remoteCatalog) {
     return null
@@ -180,6 +183,8 @@ export async function refreshSponsorRecommendations(
 export async function loadSponsorRecommendations(
   options: LoadSponsorRecommendationsOptions,
 ): Promise<LoadSponsorRecommendationsResult> {
+  if (isWebService())
+    return { items: [], source: SPONSOR_CATALOG_SOURCES.Bundled }
   const bundled = normalizeCatalog(getBundledSponsorCatalog(), {
     ...options,
     source: SPONSOR_CATALOG_SOURCES.Bundled,

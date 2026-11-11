@@ -5,6 +5,7 @@ import {
 } from "~/services/apiTransport/safariNativeCookie"
 import { isChromium } from "~/utils/browser"
 import { getChromiumRequestHeaderApi } from "~/utils/browser/requestHeaderApi"
+import { isWebService } from "~/utils/browser/webService"
 import { getErrorMessage } from "~/utils/core/error"
 import { createLogger } from "~/utils/core/logger"
 import { sanitizeSensitiveErrorText } from "~/utils/core/sanitizeSensitiveErrorText"
@@ -193,6 +194,20 @@ export async function fetchWithHeaderOverrides(
       )
     }
     if (shouldOverrideRequestOrigin(url)) requestOrigin = url.origin
+  }
+
+  // The authenticated Web bridge serializes headers to Node, where Cookie,
+  // Origin and User-Agent are not restricted by the browser Fetch API.
+  if (isWebService()) {
+    if (session) headers.set("cookie", session.cookieHeader)
+    if (requestOrigin) headers.set("origin", requestOrigin)
+    execution?.onDispatch?.()
+    return fetch(input, {
+      ...init,
+      headers,
+      credentials: "omit",
+      redirect: "error",
+    })
   }
   const options = session
     ? {

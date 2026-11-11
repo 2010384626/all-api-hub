@@ -10,6 +10,7 @@ import {
   type ProductAnalyticsTrackRequestDiscriminated,
 } from "~/services/productAnalytics/runtime/messaging"
 import { isExtensionBackground } from "~/utils/browser"
+import { isWebService } from "~/utils/browser/webService"
 import { createLogger } from "~/utils/core/logger"
 
 const logger = createLogger("ProductAnalyticsEvents")
@@ -96,6 +97,7 @@ export async function trackProductAnalyticsEvent<
   eventName: TEventName,
   properties: ProductAnalyticsEventPayload<TEventName>,
 ): Promise<boolean> {
+  if (isWebService()) return false
   try {
     const request = {
       eventName,

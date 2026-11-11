@@ -243,6 +243,7 @@ export default defineConfig({
   vite: (env) => {
     console.log("当前构建模式:", env.mode)
     return {
+      base: process.env.AAH_WEB_BUILD === "1" ? "./" : undefined,
       // Vite's default HTML scan also finds nested diagnostic checkouts,
       // which can introduce a second React runtime into the extension.
       optimizeDeps: {
@@ -268,7 +269,19 @@ export default defineConfig({
           buildBakedDevIdentity(env, getProjectRootPath()),
         ),
       },
-      plugins: [reactDevToolsAuto()],
+      plugins: [
+        reactDevToolsAuto(),
+        ...(process.env.AAH_WEB_BUILD === "1"
+          ? [
+              {
+                name: "web-native-module-urls",
+                configResolved(config: { define: Record<string, unknown> }) {
+                  delete config.define["import.meta.url"]
+                },
+              },
+            ]
+          : []),
+      ],
       content_security_policy: {
         extension_pages: {
           "script-src": ["'self'", "http://localhost:8097"],

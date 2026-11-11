@@ -11,6 +11,9 @@
     "pnpm": ">=12 <13"
   },
   "scripts": {
+    "build:web": "node scripts/build-web.mjs",
+    "start:web": "node web/server/index.mjs",
+    "test:web": "node --test tests/web/*.test.mjs",
     "dev": "wxt",
     "dev:no-browser": "node scripts/dev-no-browser.mjs",
     "dev:turnstile": "node scripts/dev-turnstile.mjs",
@@ -45,9 +48,9 @@
     "validate:push": "pnpm compile && pnpm knip",
     "validate:push:changed": "node scripts/run-push-check-if-needed.mjs",
     "i18n:check:staged": "node scripts/run-i18n-check-if-staged.mjs",
-    "i18n:status": "i18next-cli status",
-    "i18n:extract": "i18next-cli extract",
-    "i18n:extract:ci": "i18next-cli extract --dry-run --ci --quiet",
+    "i18n:status": "i18next-cli status && i18next-cli --config i18next.web.config.ts status",
+    "i18n:extract": "i18next-cli extract && i18next-cli --config i18next.web.config.ts extract",
+    "i18n:extract:ci": "i18next-cli extract --dry-run --ci --quiet && i18next-cli --config i18next.web.config.ts extract --dry-run --ci --quiet",
     "i18n:integrity": "vitest run tests/features/OptionsSearch/searchRegistryKeys.test.ts",
     "i18n:prune:report": "node scripts/i18n-prune-report.mjs",
     "i18n:sync": "i18next-cli sync",

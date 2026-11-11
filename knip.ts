@@ -6,6 +6,8 @@ const config: KnipConfig = {
   entry: [
     "wxt.config.ts",
     "i18next.config.ts",
+    "i18next.web.config.ts",
+    "web/runtime/background.ts!",
     "vitest.config.ts",
     // Tailwind 4 loads its imports/plugins from the CSS linked by WXT HTML.
     "src/styles/style.css",

@@ -5,6 +5,7 @@ import { REPO_URL } from "~/constants/about"
 import { useIsStarred } from "~/features/StarPromotion/useStarPromotionActive"
 import { cn } from "~/lib/utils"
 import { createTab } from "~/utils/browser/tabs"
+import { isWebService } from "~/utils/browser/webService"
 import { getDocsHomepageUrl } from "~/utils/navigation/docsLinks"
 
 import { SupportCommunityPopover } from "./SupportCommunityPopover"
@@ -46,7 +47,7 @@ export function OptionsSidebarFooter({
     return (
       <div
         data-testid="options-sidebar-footer"
-        className="border-sidebar-border mt-auto flex flex-col items-center gap-1.5 border-t py-2.5"
+        className="mt-auto flex flex-col items-center gap-1.5 border-t border-sidebar-border py-2.5"
       >
         {/* GitHub / Star */}
         <button
@@ -55,12 +56,12 @@ export function OptionsSidebarFooter({
           onClick={handleStarClick}
           title={starTooltip}
           aria-label={starTooltip}
-          className="text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-ring group flex size-9 items-center justify-center rounded-lg transition-colors outline-none focus-visible:ring-2"
+          className="group flex size-9 items-center justify-center rounded-lg text-sidebar-foreground/70 transition-colors outline-none hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-ring"
         >
           {isStarred ? (
-            <Star className="fill-star text-star size-4 shrink-0 transition-colors" />
+            <Star className="size-4 shrink-0 fill-star text-star transition-colors" />
           ) : (
-            <Star className="text-sidebar-foreground/70 group-hover:text-star size-4 shrink-0 transition-colors" />
+            <Star className="size-4 shrink-0 text-sidebar-foreground/70 transition-colors group-hover:text-star" />
           )}
         </button>
 
@@ -73,23 +74,29 @@ export function OptionsSidebarFooter({
           }
           title={docsTitle}
           aria-label={docsLabel}
-          className="text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-ring flex size-9 items-center justify-center rounded-lg transition-colors outline-none focus-visible:ring-2"
+          className="flex size-9 items-center justify-center rounded-lg text-sidebar-foreground/70 transition-colors outline-none hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-ring"
         >
           <BookOpen className="size-4 shrink-0" />
         </button>
 
         {/* Sponsor */}
-        <SupportCommunityPopover section="sponsors" side="right" align="center">
-          <button
-            type="button"
-            data-testid="sidebar-footer-sponsor"
-            title={sponsorTitle}
-            aria-label={sponsorLabel}
-            className="text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-ring flex size-9 items-center justify-center rounded-lg transition-colors outline-none focus-visible:ring-2"
+        {!isWebService() && (
+          <SupportCommunityPopover
+            section="sponsors"
+            side="right"
+            align="center"
           >
-            <Heart className="text-destructive-indicator/80 size-4 shrink-0" />
-          </button>
-        </SupportCommunityPopover>
+            <button
+              type="button"
+              data-testid="sidebar-footer-sponsor"
+              title={sponsorTitle}
+              aria-label={sponsorLabel}
+              className="flex size-9 items-center justify-center rounded-lg text-sidebar-foreground/70 transition-colors outline-none hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <Heart className="size-4 shrink-0 text-destructive-indicator/80" />
+            </button>
+          </SupportCommunityPopover>
+        )}
 
         {/* Community */}
         <SupportCommunityPopover
@@ -102,7 +109,7 @@ export function OptionsSidebarFooter({
             data-testid="sidebar-footer-community"
             title={communityTitle}
             aria-label={communityLabel}
-            className="text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-ring flex size-9 items-center justify-center rounded-lg transition-colors outline-none focus-visible:ring-2"
+            className="flex size-9 items-center justify-center rounded-lg text-sidebar-foreground/70 transition-colors outline-none hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-ring"
           >
             <Users className="size-4 shrink-0" />
           </button>
@@ -114,7 +121,7 @@ export function OptionsSidebarFooter({
   return (
     <div
       data-testid="options-sidebar-footer"
-      className="border-sidebar-border mt-auto border-t p-2"
+      className="mt-auto border-t border-sidebar-border p-2"
     >
       <div className="grid grid-cols-2 gap-1">
         {/* GitHub / Star Button */}
@@ -125,7 +132,7 @@ export function OptionsSidebarFooter({
           title={starTooltip}
           aria-label={starTooltip}
           className={cn(
-            "group focus-visible:ring-ring flex min-w-0 items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium transition-colors outline-none focus-visible:ring-2",
+            "group flex min-w-0 items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring",
             isStarred
               ? "text-sidebar-foreground/85 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
               : "text-sidebar-foreground/75 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
@@ -152,25 +159,27 @@ export function OptionsSidebarFooter({
           }
           title={docsTitle}
           aria-label={docsLabel}
-          className="text-sidebar-foreground/75 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-ring flex min-w-0 items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium transition-colors outline-none focus-visible:ring-2"
+          className="flex min-w-0 items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium text-sidebar-foreground/75 transition-colors outline-none hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-ring"
         >
-          <BookOpen className="text-sidebar-foreground/70 size-3.5 shrink-0" />
+          <BookOpen className="size-3.5 shrink-0 text-sidebar-foreground/70" />
           <span className="truncate">{docsLabel}</span>
         </button>
 
         {/* Sponsor Button */}
-        <SupportCommunityPopover section="sponsors" side="top" align="start">
-          <button
-            type="button"
-            data-testid="sidebar-footer-sponsor"
-            title={sponsorTitle}
-            aria-label={sponsorLabel}
-            className="text-sidebar-foreground/75 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-ring flex min-w-0 items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium transition-colors outline-none focus-visible:ring-2"
-          >
-            <Heart className="text-destructive-indicator/80 size-3.5 shrink-0" />
-            <span className="truncate">{sponsorLabel}</span>
-          </button>
-        </SupportCommunityPopover>
+        {!isWebService() && (
+          <SupportCommunityPopover section="sponsors" side="top" align="start">
+            <button
+              type="button"
+              data-testid="sidebar-footer-sponsor"
+              title={sponsorTitle}
+              aria-label={sponsorLabel}
+              className="flex min-w-0 items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium text-sidebar-foreground/75 transition-colors outline-none hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <Heart className="size-3.5 shrink-0 text-destructive-indicator/80" />
+              <span className="truncate">{sponsorLabel}</span>
+            </button>
+          </SupportCommunityPopover>
+        )}
 
         {/* Community Button */}
         <SupportCommunityPopover section="community" side="top" align="end">
@@ -179,9 +188,9 @@ export function OptionsSidebarFooter({
             data-testid="sidebar-footer-community"
             title={communityTitle}
             aria-label={communityLabel}
-            className="text-sidebar-foreground/75 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-ring flex min-w-0 items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium transition-colors outline-none focus-visible:ring-2"
+            className="flex min-w-0 items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium text-sidebar-foreground/75 transition-colors outline-none hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-ring"
           >
-            <Users className="text-sidebar-foreground/70 size-3.5 shrink-0" />
+            <Users className="size-3.5 shrink-0 text-sidebar-foreground/70" />
             <span className="truncate">{communityLabel}</span>
           </button>
         </SupportCommunityPopover>

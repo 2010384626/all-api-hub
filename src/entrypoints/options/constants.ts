@@ -49,6 +49,9 @@ const ManagedSiteModelSync = createLazyMenuComponent(
   () => import("./pages/ManagedSiteModelSync"),
 )
 const ModelList = createLazyMenuComponent(() => import("./pages/ModelList"))
+const ModelFingerprint = createLazyMenuComponent(
+  () => import("./pages/ModelFingerprint"),
+)
 const UsageAnalytics = createLazyMenuComponent(
   () => import("./pages/UsageAnalytics"),
 )
@@ -68,6 +71,7 @@ const BASE_MENU_COMPONENTS = {
   [MENU_ITEM_IDS.API_CREDENTIAL_PROFILES]: ApiCredentialProfiles,
   [MENU_ITEM_IDS.BOOKMARK]: BookmarkManagement,
   [MENU_ITEM_IDS.MODELS]: ModelList,
+  [MENU_ITEM_IDS.MODEL_FINGERPRINT]: ModelFingerprint,
   [MENU_ITEM_IDS.KEYS]: KeyManagement,
   [MENU_ITEM_IDS.AUTO_CHECKIN]: AutoCheckin,
   [MENU_ITEM_IDS.SITE_ANNOUNCEMENTS]: SiteAnnouncements,

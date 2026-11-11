@@ -32,6 +32,7 @@ import {
 import type { SupportedUiLanguage } from "~/constants"
 import { cn } from "~/lib/utils"
 import { userPreferences } from "~/services/preferences/userPreferences"
+import { isWebService } from "~/utils/browser/webService"
 import { normalizeAppLanguage } from "~/utils/i18n/language"
 import { changePageLanguage } from "~/utils/i18n/pageLanguage"
 
@@ -104,6 +105,9 @@ export function LanguageSwitcher({
   showIcon = true,
   variant = "inline",
 }: LanguageSwitcherProps) {
+  const availableLanguages = isWebService()
+    ? ([DEFAULT_LANG, ENGLISH_LANG] as const)
+    : SUPPORTED_UI_LANGUAGES
   const { i18n, t } = useTranslation("settings")
   const activeLanguage =
     normalizeAppLanguage(i18n.resolvedLanguage || i18n.language) ?? DEFAULT_LANG
@@ -151,7 +155,7 @@ export function LanguageSwitcher({
             value={activeLanguage}
             onValueChange={handleSupportedLanguageChange}
           >
-            {SUPPORTED_UI_LANGUAGES.map((code) => {
+            {availableLanguages.map((code) => {
               const languageName = getLanguageOptionName(t, code)
 
               return (
@@ -170,14 +174,14 @@ export function LanguageSwitcher({
     return (
       <div
         className={cn(
-          "gap-y-density-1-5 sm:gap-y-density-2 flex items-center gap-x-1.5 sm:gap-x-2",
+          "flex items-center gap-x-1.5 gap-y-density-1-5 sm:gap-x-2 sm:gap-y-density-2",
           showIcon && "w-full",
         )}
       >
         {showIcon && (
           <Languages
             className={cn(
-              "dark:text-secondary-foreground h-4 w-4 shrink-0",
+              "h-4 w-4 shrink-0 dark:text-secondary-foreground",
               !compact && "sm:h-[1.2rem] sm:w-[1.2rem]",
             )}
           />
@@ -195,7 +199,7 @@ export function LanguageSwitcher({
             <SelectValue />
           </SelectTrigger>
           <SelectContent align="end">
-            {SUPPORTED_UI_LANGUAGES.map((code) => {
+            {availableLanguages.map((code) => {
               const languageName = getLanguageOptionName(t, code)
 
               return (
@@ -221,15 +225,15 @@ export function LanguageSwitcher({
   return (
     <div
       className={cn(
-        "gap-y-density-1-5 sm:gap-y-density-2 flex w-full items-center gap-x-1.5 sm:gap-x-2 [@container(min-width:42rem)]:w-auto",
-        compact && "gap-y-density-1-5 gap-x-1.5",
+        "flex w-full items-center gap-x-1.5 gap-y-density-1-5 sm:gap-x-2 sm:gap-y-density-2 [@container(min-width:42rem)]:w-auto",
+        compact && "gap-x-1.5 gap-y-density-1-5",
         className,
       )}
     >
       {showIcon && (
         <Languages
           className={cn(
-            "dark:text-secondary-foreground h-4 w-4 shrink-0",
+            "h-4 w-4 shrink-0 dark:text-secondary-foreground",
             !compact && "sm:h-[1.2rem] sm:w-[1.2rem]",
           )}
         />
@@ -241,9 +245,9 @@ export function LanguageSwitcher({
         size="sm"
         className={cn(
           "p-0.5 [--corner-inset:2px]",
-          !compact && "sm:py-density-1 sm:px-1 sm:[--corner-inset:4px]",
+          !compact && "sm:px-1 sm:py-density-1 sm:[--corner-inset:4px]",
         )}
-        options={SUPPORTED_UI_LANGUAGES.map((code) => {
+        options={availableLanguages.map((code) => {
           const label = getLanguageOptionLabel(t, code)
           const languageName = getLanguageOptionName(t, code)
           const accessibleLabel =

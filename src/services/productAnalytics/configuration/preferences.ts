@@ -5,6 +5,7 @@ import {
   STORAGE_LOCKS,
 } from "~/services/core/storageKeys"
 import { withExtensionStorageWriteLock } from "~/services/core/storageWriteLock"
+import { isWebService } from "~/utils/browser/webService"
 import { safeRandomUUID } from "~/utils/core/identifier"
 import { createLogger } from "~/utils/core/logger"
 
@@ -88,6 +89,7 @@ class ProductAnalyticsPreferencesService {
   }
 
   async isEnabled(): Promise<boolean> {
+    if (isWebService()) return false
     const state = await this.getState()
     return state.enabled ?? PRODUCT_ANALYTICS_DEFAULT_ENABLED
   }
@@ -116,6 +118,7 @@ class ProductAnalyticsPreferencesService {
   }
 
   async getAnonymousIdIfEnabled(): Promise<string | null> {
+    if (isWebService()) return null
     return await this.withStorageWriteLock(async () => {
       const state = await this.getState()
       if (!(state.enabled ?? PRODUCT_ANALYTICS_DEFAULT_ENABLED)) {
@@ -128,6 +131,7 @@ class ProductAnalyticsPreferencesService {
   async withAnonymousIdIfEnabled<T>(
     work: (anonymousId: string) => Promise<T>,
   ): Promise<T | null> {
+    if (isWebService()) return null
     return await this.withStorageWriteLock(async () => {
       const state = await this.getState()
       if (!(state.enabled ?? PRODUCT_ANALYTICS_DEFAULT_ENABLED)) {

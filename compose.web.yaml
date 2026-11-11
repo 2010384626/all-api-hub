@@ -1,0 +1,32 @@
+name: all-api-hub-web
+services:
+  app:
+    image: ${AAH_IMAGE:-all-api-hub-web:local}
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+      target: runtime
+    env_file:
+      - .env.web
+    environment:
+      HOST: 0.0.0.0
+      PORT: 3000
+      DATA_DIR: /data
+    ports:
+      - "127.0.0.1:${WEB_PORT:-8787}:3000"
+    volumes:
+      - data:/data
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 100
+    mem_limit: 768m
+    stop_grace_period: 30s
+volumes:
+  data:
+    name: all-api-hub-web-data

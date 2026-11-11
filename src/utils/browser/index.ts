@@ -4,6 +4,7 @@ import {
   SIDEPANEL_PAGE_PATH,
 } from "~/constants/extensionPages"
 import { getExtensionURL } from "~/utils/browser/runtime"
+import { isWebService } from "~/utils/browser/webService"
 
 export { detectBrowserFamily } from "./userAgent"
 
@@ -98,7 +99,10 @@ function isCurrentExtensionPage(pagePath: string): boolean {
 
   try {
     const url = new URL(window.location.href)
-    return isExtensionPage(url) && url.pathname.endsWith(`/${pagePath}`)
+    return (
+      (isExtensionPage(url) || isWebService()) &&
+      url.pathname.endsWith(`/${pagePath}`)
+    )
   } catch {
     return false
   }
