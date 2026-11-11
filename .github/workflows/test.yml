@@ -236,7 +236,7 @@ jobs:
 
       - name: Upload coverage to Codecov
         # A failed assertion makes the merge command fail, but its coverage is usable.
-        if: ${{ !cancelled() && steps.reports.outputs.complete == 'true' && hashFiles('coverage/lcov.info') != '' }}
+        if: ${{ !cancelled() && (github.repository == 'qixing-jk/all-api-hub' || vars.ENABLE_CODECOV == 'true') && steps.reports.outputs.complete == 'true' && hashFiles('coverage/lcov.info') != '' }}
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v6
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -254,7 +254,7 @@ jobs:
           key: unit-test-durations-${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: Upload test results to Codecov
-        if: ${{ !cancelled() && hashFiles('test-report.junit.xml') != '' }}
+        if: ${{ !cancelled() && (github.repository == 'qixing-jk/all-api-hub' || vars.ENABLE_CODECOV == 'true') && hashFiles('test-report.junit.xml') != '' }}
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v6
         with:
           token: ${{ secrets.CODECOV_TOKEN }}

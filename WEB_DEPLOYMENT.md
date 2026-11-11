@@ -62,6 +62,8 @@ bash deploy/start.sh
 
 原作者的扩展自动发版流程默认只在原仓库运行；本 fork 使用 Web service 构建验证。若以后需要发行浏览器扩展，另行配置对应密钥并将仓库变量 `ENABLE_EXTENSION_RELEASES` 设为 `true`。
 
+测试和覆盖率报告保留在 GitHub Actions 产物中。向 Codecov 上传默认只在原仓库启用；自行开通该服务后可设置仓库变量 `ENABLE_CODECOV=true`，无需为 VPS 部署配置它。
+
 ## 新部署与网站挂载
 
 需要 Linux、Git、Bash、OpenSSL、Docker Engine 与 Docker Compose 插件。无需主机 Node/npm；镜像构建需要连接 npm 和 Docker 镜像仓库。原版 UI 构建依赖较多，建议至少 2 GB 可用内存，资源紧张时在另一台机器构建镜像。
